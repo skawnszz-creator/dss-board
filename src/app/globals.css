@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/*
+ * 사무실 PC 에서 보는 사내 게시판이다. 밝은 배경 하나로 고정한다.
+ * 타사 사내 게시판에서 흔히 보는 흰 바탕 + 얇은 회색 선 구성.
+ */
+:root {
+  color-scheme: light;
+}
+
+@theme inline {
+  /*
+   * 시스템 기본 글꼴만 쓴다.
+   * 외부 폰트 CDN 은 사내망·NAS 컨테이너에서 막힐 수 있어 쓰지 않는다.
+   */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", "맑은 고딕",
+    "Apple SD Gothic Neo", sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", "D2Coding", ui-monospace, monospace;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: #ffffff;
+  color: #111827;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 숫자 자릿수를 맞춰 읽는 값 (날짜·크기·개수) */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ */
+/* 글 본문 — 글 쓰기 화면(에디터)과 글 보기 화면이 같은 모양이 되게 한다  */
+/* ------------------------------------------------------------------ */
+
+.post-body {
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.post-body p {
+  margin: 0.4em 0;
+  min-height: 1.4em;
+}
+
+.post-body ul {
+  list-style: disc;
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+
+.post-body ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+
+.post-body li {
+  margin: 0.2em 0;
+}
+
+.post-body blockquote {
+  border-left: 3px solid #e5e7eb;
+  padding-left: 0.75em;
+  color: #4b5563;
+  margin: 0.6em 0;
+}
+
+.post-body img {
+  max-width: 100%;
+  height: auto;
+  margin: 0.5em 0;
+}
+
+.post-body a {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+/* 에디터 안쪽 테두리는 바깥 상자가 담당한다 */
+.post-body.ProseMirror:focus {
+  outline: none;
+}
+
