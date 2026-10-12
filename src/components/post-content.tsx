@@ -70,7 +70,13 @@ function renderNode(node: PostNode, key: string): ReactNode {
       return (
         // 사진은 /api/images/{id} 로만 내려오고, 서버가 종류를 검사해 둔 것이다.
         // eslint-disable-next-line @next/next/no-img-element
-        <img key={key} src={node.attrs.src} alt={node.attrs.alt ?? ""} />
+        <img
+          key={key}
+          src={node.attrs.src}
+          alt={node.attrs.alt ?? ""}
+          // 화면보다 넓으면 globals.css 의 max-width:100% 가 줄여 준다
+          style={node.attrs.width ? { width: node.attrs.width } : undefined}
+        />
       );
 
     case "paragraph": {

@@ -31,7 +31,7 @@ export type PostMark =
 export type PostNode =
   | { type: "text"; text: string; marks?: PostMark[] }
   | { type: "hardBreak" }
-  | { type: "image"; attrs: { src: string; alt?: string } }
+  | { type: "image"; attrs: { src: string; alt?: string; width?: number } }
   | {
       type: "paragraph";
       attrs?: { textAlign?: TextAlign };
@@ -41,6 +41,10 @@ export type PostNode =
   | { type: "orderedList"; content?: PostNode[] }
   | { type: "listItem"; content?: PostNode[] }
   | { type: "blockquote"; content?: PostNode[] };
+
+/** 사진 너비(px). 높이는 저장하지 않고 화면에서 비율대로 맞춘다. */
+export const IMAGE_MIN_WIDTH = 50;
+export const IMAGE_MAX_WIDTH = 2000;
 
 export type PostDoc = { type: "doc"; content: PostNode[] };
 

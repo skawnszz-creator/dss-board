@@ -7,7 +7,11 @@ import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ALLOWED_FONT_SIZES, type PostDoc } from "@/lib/post-content/types";
+import {
+  ALLOWED_FONT_SIZES,
+  IMAGE_MIN_WIDTH,
+  type PostDoc,
+} from "@/lib/post-content/types";
 
 /** 고를 수 있는 글자색 */
 const COLORS: { label: string; value: string }[] = [
@@ -84,7 +88,17 @@ export function PostEditor({
       Color,
       FontSize,
       TextAlign.configure({ types: ["paragraph"] }),
-      Image.configure({ allowBase64: false }),
+      Image.configure({
+        allowBase64: false,
+        // 모서리를 끌어 크기 조절. 비율은 항상 유지한다 (높이는 저장하지 않는다)
+        resize: {
+          enabled: true,
+          directions: ["top-left", "top-right", "bottom-left", "bottom-right"],
+          minWidth: IMAGE_MIN_WIDTH,
+          minHeight: 30,
+          alwaysPreserveAspectRatio: true,
+        },
+      }),
     ],
     content: initialContent,
     editorProps: {

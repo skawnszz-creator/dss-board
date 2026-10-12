@@ -8,6 +8,8 @@ import {
   ALLOWED_ALIGNMENTS,
   ALLOWED_FONT_SIZES,
   EMPTY_DOC,
+  IMAGE_MAX_WIDTH,
+  IMAGE_MIN_WIDTH,
   type FontSize,
   type PostDoc,
   type PostMark,
@@ -20,6 +22,7 @@ const IMAGE_SRC_RE =
   /^\/api\/images\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const COLOR_RE = /^#[0-9a-f]{6}$/;
+
 
 /** 너무 깊거나 너무 큰 본문을 막는다 */
 const MAX_DEPTH = 10;
@@ -117,7 +120,14 @@ function sanitizeNodes(input: unknown, depth: number, ctx: Ctx): PostNode[] {
         const src = typeof attrs.src === "string" ? attrs.src.trim() : "";
         if (!IMAGE_SRC_RE.test(src)) break;
         const alt = typeof attrs.alt === "string" ? attrs.alt.slice(0, 200) : undefined;
-        out.push({ type: "image", attrs: alt ? { src, alt } : { src } });
+        const width =
+          typeof attrs.width === "number" && Number.isFinite(attrs.width)
+            ? Math.min(IMAGE_MAX_WIDTH, Math.max(IMAGE_MIN_WIDTH, Math.round(attrs.width)))
+            : undefined;
+        out.push({
+          type: "image",
+          attrs: { src, ...(alt ? { alt } : {}), ...(width ? { width } : {}) },
+        });
         break;
       }
 

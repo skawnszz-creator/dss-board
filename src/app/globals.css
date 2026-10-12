@@ -79,6 +79,50 @@ body {
   margin: 0.5em 0;
 }
 
+/* 글쓰기 화면 — 사진 크기 조절 손잡이 (Tiptap ResizableNodeView) */
+.post-body [data-resize-container],
+.post-body [data-resize-wrapper] {
+  max-width: 100%;
+}
+
+.post-body [data-resize-wrapper] img {
+  margin: 0;
+  /* 끄는 동안 Tiptap 이 높이를 px 로 넣지만 비율 유지라 auto 와 같다.
+     화면보다 넓은 사진이 찌그러지지 않게 auto 로 고정한다 */
+  height: auto !important;
+}
+
+.post-body [data-resize-container] {
+  margin: 0.5em 0;
+}
+
+.post-body [data-resize-handle] {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 2px solid #2563eb;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+  z-index: 1;
+}
+
+.post-body [data-resize-container]:hover [data-resize-handle],
+.post-body [data-resize-container].ProseMirror-selectednode [data-resize-handle],
+.post-body [data-resize-container][data-resize-state="true"] [data-resize-handle] {
+  opacity: 1;
+}
+
+.post-body [data-resize-container].ProseMirror-selectednode [data-resize-wrapper],
+.post-body [data-resize-container][data-resize-state="true"] [data-resize-wrapper] {
+  outline: 2px solid #2563eb;
+}
+
+.post-body [data-resize-handle="top-left"] { margin: -6px 0 0 -6px; cursor: nwse-resize; }
+.post-body [data-resize-handle="bottom-right"] { margin: 0 -6px -6px 0; cursor: nwse-resize; }
+.post-body [data-resize-handle="top-right"] { margin: -6px -6px 0 0; cursor: nesw-resize; }
+.post-body [data-resize-handle="bottom-left"] { margin: 0 0 -6px -6px; cursor: nesw-resize; }
+
 .post-body a {
   color: #1d4ed8;
   text-decoration: underline;
