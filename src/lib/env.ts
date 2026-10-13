@@ -8,6 +8,26 @@
  * 검사하기 위해서다. (빌드 중에 불필요하게 터지지 않게)
  */
 
+import { isAutoValue, primaryLanAddress, resolveAutoUrl } from "./lan-address";
+
+/** 포털(dss-auth)의 포트. */
+const PORTAL_PORT = 3100;
+
+/**
+ * 이 사이트의 포트.
+ *
+ * 3400 인 이유: 이 개발 PC 에서 A/S 3000 · 통합 로그인 3100 · 회사 홈페이지
+ * 3200 · 계측기 3300 이 이미 쓴다. 로그인 왕복을 보려면 포털과 이 사이트가
+ * **동시에** 떠 있어야 하므로 겹치면 안 된다.
+ */
+const OWN_PORT = Number(process.env.PORT ?? 3400);
+
+/**
+ * 포털에 등록된 이 시스템 redirect_uri 의 경로 부분.
+ * 실제 라우트는 src/app/api/auth/callback/route.ts 다.
+ */
+const OIDC_CALLBACK_PATH = "/api/auth/callback";
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value || value.trim() === "") {
@@ -61,12 +81,27 @@ export const env = {
   },
 
   /* ---------------------------------------------------------------- */
-  /* OIDC — dss-auth 포털 연결. 엔드포인트가 열리면 채운다.             */
+  /* OIDC — dss-auth 포털 연결                                          */
   /* ---------------------------------------------------------------- */
 
-  /** 포털의 issuer. 끝 슬래시 유무까지 ID 토큰의 iss 와 정확히 같아야 한다. */
+  /**
+   * 포털의 issuer. ID 토큰의 iss 클레임과 문자 단위로 같아야 한다.
+   *
+   * `auto` 면 이 기계의 사내망 주소 + 포털 포트(3100)로 푼다 — 개발 중에는
+   * 포털도 같은 PC 에 있다. Wi-Fi 가 바뀌어 주소가 달라져도 설정을 고칠
+   * 필요가 없다. 운영은 HTTPS 도메인이라 이 기계가 알아낼 수 없으니 직접 적는다.
+   *
+   * 끝의 슬래시를 떼는 이유: auth/oidc.ts 의 getDiscovery() 는 떼고 쓰지만
+   * verifyIdToken() 의 jwtVerify({ issuer }) 에는 이 값이 그대로 들어간다.
+   * "http://x/" 와 "http://x" 가 섞이면 iss 대조가 **조용히** 실패하는데,
+   * 원인을 찾기가 가장 어려운 종류의 버그다. 여기서 한 번 떼면 둘이 맞는다.
+   */
   get oidcIssuer(): string {
-    return required("OIDC_ISSUER");
+    const raw = required("OIDC_ISSUER");
+    const resolved = isAutoValue(raw)
+      ? resolveAutoUrl(raw, PORTAL_PORT, primaryLanAddress())
+      : raw;
+    return resolved.replace(/\/+$/, "");
   },
 
   get oidcClientId(): string {
@@ -78,9 +113,26 @@ export const env = {
     return required("OIDC_CLIENT_SECRET");
   },
 
-  /** 포털에 등록한 값과 문자 단위로 정확히 같아야 한다. */
+  /**
+   * 포털에 등록한 값과 문자 단위로 정확히 같아야 한다.
+   *
+   * `auto` 면 이 기계의 사내망 주소 + 이 사이트 포트(3400) + 콜백 경로로 푼다.
+   * 운영은 HTTPS 도메인이라 이 기계가 알아낼 수 없으니 직접 적는다.
+   *
+   * 요청(request.url)에서 만들어 쓰지 않고 환경변수로 두는 이유: LAN 으로
+   * 들어온 요청인데도 서버 자신의 바인딩 주소(localhost)가 보이는 경우가
+   * A/S 시스템에서 실측되었다. redirect_uri 는 /authorize 와 /token 양쪽에서
+   * 문자 단위로 대조되므로, 만들어 쓰면 "어떤 망에서는 되고 어떤 망에서는
+   * 안 되는" 형태로 실패한다.
+   *
+   * auto 는 요청에서 만들어 쓰는 것과 다르다 — 이 기계의 네트워크 인터페이스를
+   * 읽으므로 누가 부르든 같은 문자열이 나온다. 위 주석이 배제한 "망에 따라
+   * 달라지는" 문제가 생기지 않는다.
+   */
   get oidcRedirectUri(): string {
-    return required("OIDC_REDIRECT_URI");
+    const raw = required("OIDC_REDIRECT_URI");
+    if (!isAutoValue(raw)) return raw;
+    return `${resolveAutoUrl(raw, OWN_PORT, primaryLanAddress())}${OIDC_CALLBACK_PATH}`;
   },
 
   /**
