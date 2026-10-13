@@ -70,6 +70,46 @@ export async function getSessionUser(): Promise<WebUser | null> {
   return rows[0]?.user ?? null;
 }
 
+/**
+ * 포털이 "이 사람 세션 끊어라" 라고 알려왔을 때, 그 사람의 세션을 **전부** 끊는다.
+ * 끊은 것이 있었으면 true.
+ *
+ * sid 가 아니라 sub 단위로 끊는다. 공용 PC 에서 나간 사람에게는 그편이
+ * 기대에 맞고, 정지된 사람에게는 반드시 그래야 한다.
+ *
+ * 🔵 이 함수에는 그 사람의 브라우저가 없다 — 포털의 **서버**가 두드린다.
+ * 그래서 쿠키를 지우지 않고(cookies() 를 쓸 수 없다) DB 만 건드린다.
+ * 그래도 새지 않는다: 다음 요청에서 getSessionUser() 가 revoked_at 을 보고
+ * null 을 돌려주므로, 손에 쥔 쿠키는 그 순간부터 아무것도 열지 못한다.
+ */
+export async function revokeSessionsForSubject(
+  authSub: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: webUsers.id })
+    .from(webUsers)
+    .where(eq(webUsers.authSub, authSub))
+    .limit(1);
+
+  const userId = rows[0]?.id;
+  // 이 사이트에 아직 들어온 적 없는 사람일 수 있다 — 오류가 아니다.
+  if (!userId) return false;
+
+  const revoked = await db
+    .update(webSessions)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(webSessions.userId, userId),
+        // 이미 끊긴 행의 시각을 덮어쓰지 않는다.
+        isNull(webSessions.revokedAt),
+      ),
+    )
+    .returning({ id: webSessions.id });
+
+  return revoked.length > 0;
+}
+
 /** 이 사이트의 세션만 끊는다. (포털 세션은 그대로) */
 export async function destroySession(): Promise<void> {
   const store = await cookies();

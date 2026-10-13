@@ -254,18 +254,97 @@ export async function verifyIdToken(
 }
 
 /* ------------------------------------------------------------------ */
-/* 포털까지 함께 로그아웃                                               */
-/* 돌아올 주소는 포털의 post_logout_redirect_uris 에 미리 등록해야 한다.  */
+/* 4단계 — 로그아웃 토큰 검증 (OIDC Back-Channel Logout 1.0)             */
+/*                                                                     */
+/* 포털이 "이 사람 세션 끊어라" 라고 보내오는 토큰이다. 받는 창구는      */
+/* app/api/auth/backchannel-logout/route.ts 이고, 그 창구는 인증 없이   */
+/* 누구나 두드릴 수 있다 — 이 함수가 유일한 방어선이다.                  */
 /* ------------------------------------------------------------------ */
 
-export async function buildLogoutUrl(
-  postLogoutRedirectUri: string,
-): Promise<string | null> {
+const LOGOUT_EVENT = "http://schemas.openid.net/event/backchannel-logout";
+
+/**
+ * 로그아웃 토큰을 검증하고 끊어야 할 사람(sub)을 돌려준다.
+ * 하나라도 어긋나면 null — 상세 사유는 서버 로그에만 남긴다.
+ *
+ * 포털은 sid 를 실을 수도 있고 안 실을 수도 있다(규격 §2.4 — sub 와 sid 중
+ * 하나만 있어도 된다). 그래서 sid 를 요구하지 않는다. 이 사이트는 어차피
+ * sub 단위로 끊는다(session.ts 의 revokeSessionsForSubject).
+ */
+export async function verifyLogoutToken(token: string): Promise<string | null> {
+  try {
+    const doc = await getDiscovery();
+
+    const { payload, protectedHeader } = await jwtVerify(
+      token,
+      getJwks(doc.jwks_uri),
+      {
+        // iss 는 끝 슬래시 유무까지 정확히 일치해야 한다.
+        issuer: env.oidcIssuer,
+        audience: env.oidcClientId,
+        // none·HS256 을 받아들이지 않는다.
+        algorithms: ["RS256"],
+        clockTolerance: 30,
+        requiredClaims: ["iss", "aud", "sub", "iat", "exp"],
+      },
+    );
+
+    if (protectedHeader.alg !== "RS256") {
+      console.error("[auth] 로그아웃 토큰의 alg 가 RS256 이 아닙니다");
+      return null;
+    }
+
+    // nonce 가 있으면 ID 토큰이다. 규격이 로그아웃 토큰에 nonce 를 금지하는
+    // 이유가 이것이다 — 로그인 토큰을 이 창구에 들이밀어 남을 로그아웃시키는
+    // 것을 막는다.
+    if (payload.nonce !== undefined) {
+      console.error("[auth] nonce 가 있는 토큰입니다 (ID 토큰일 수 있음)");
+      return null;
+    }
+
+    const events = payload.events;
+    if (
+      typeof events !== "object" ||
+      events === null ||
+      !(LOGOUT_EVENT in (events as Record<string, unknown>))
+    ) {
+      console.error("[auth] 로그아웃 이벤트 표시가 없습니다");
+      return null;
+    }
+
+    if (typeof payload.sub !== "string" || payload.sub === "") {
+      console.error("[auth] 로그아웃 토큰에 sub 가 없습니다");
+      return null;
+    }
+
+    return payload.sub;
+  } catch (error) {
+    console.error("[auth] 로그아웃 토큰 검증 실패", error);
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 포털까지 함께 로그아웃                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 포털의 로그아웃 주소. 돌아올 곳을 붙이지 않는다.
+ *
+ * 포털은 `id_token_hint` 와 `post_logout_redirect_uri` 가 **둘 다** 있을 때만
+ * 그 주소로 돌려보내고, 아니면 자기 로그인 화면(/signin)에 머물게 한다.
+ * 로그아웃한 사람이 있어야 할 곳이 바로 거기다 — 게시판 로그인 화면으로
+ * 돌아오면 "포털로 가세요" 한 장을 더 거칠 뿐이고, 공용 PC 에서는 방금
+ * 모든 시스템에서 나간 사람을 다시 이 사이트 앞에 세우는 꼴이 된다.
+ *
+ * 애초에 붙일 수도 없다: 이 사이트는 id_token 을 어디에도 보관하지 않아
+ * id_token_hint 를 만들 수 없다(callback/route.ts 는 검증만 하고 버린다).
+ */
+export async function buildLogoutUrl(): Promise<string | null> {
   const doc = await getDiscovery();
   if (!doc.end_session_endpoint) return null;
 
   const url = new URL(doc.end_session_endpoint);
   url.searchParams.set("client_id", env.oidcClientId);
-  url.searchParams.set("post_logout_redirect_uri", postLogoutRedirectUri);
   return url.toString();
 }
