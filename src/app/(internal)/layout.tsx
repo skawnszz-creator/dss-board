@@ -1,12 +1,12 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 
-import { NotificationBell, ServiceMenuBar } from "@dss/ui";
+import { ServiceMenuBar } from "@dss/ui";
 
+import { HeaderNotificationBell } from "@/components/header-notification-bell";
 import { SiteHeader } from "@/components/site-header";
 import { requireSession } from "@/lib/auth/guards";
 import { portalAppsUrl, thisServiceId } from "@/lib/auth/oidc";
 import { readServiceMenu } from "@/lib/auth/service-menu-cookie";
-import { listUnreadNoticeNotifications } from "@/lib/notifications/queries";
 
 /**
  * 사내 구간. 이 아래 모든 화면은 로그인 필수다.
@@ -33,26 +33,9 @@ export default async function InternalLayout({
   // 쿠키가 없거나 못 믿을 것이면 빈 배열이고, 그때는 아래에서 조각 자체를
   // 만들지 않는다 — 머리말이 예전과 똑같다(빈 자리도 남지 않는다).
   //
-  // ── 그리고 **알림 종** ────────────────────────────────────────────────
-  // 이 사람이 **아직 열어 보지 않은 공지**(notifications/queries.ts). 위
-  // 쿠키 읽기와 서로 기다릴 이유가 없어 나란히 간다.
-  //
-  // 🔴 질의가 실패해도 화면은 뜬다 — listUnreadNoticeNotifications 가 어떤
-  // 실패든 삼키고 빈 목록을 돌려준다(그 파일 머리말). 종 하나 때문에 모든
-  // 화면이 죽으면 안 된다.
-  //
-  // 🔵 **<Suspense> 로 감싸지 않는다.** 개선요청은 감쌌지만 그쪽이 기다리는
-  //    것은 **포털 왕복**(망을 타고, 1.5초 상한이 걸려 있다)이다. 여기서
-  //    기다리는 것은 **같은 기계의 DB 질의 하나**이고, 이 레이아웃은 바로 위
-  //    requireSession() 에서 이미 DB 를 한 번 읽는다 — DB 가 느리거나 멎으면
-  //    종을 떼어 놓아도 화면은 어차피 서지 않는다. 감싸면 얻는 것 없이
-  //    경계 하나와 「머리말이 그려진 뒤 종이 끼어드는」 들썩임만 는다.
-  //    다음 조각에서 **포털에 남의 알림을 물으러 가는 순간** 이 판단이
-  //    달라진다 — 그때 감싸면 된다.
-  const [services, notifications] = await Promise.all([
-    readServiceMenu(),
-    listUnreadNoticeNotifications(viewer.user.id),
-  ]);
+  // 🔵 알림 종은 이제 **여기서 기다리지 않는다**(아래 notificationBell 의
+  //    주석). 그래서 이 자리에 남은 await 는 쿠키 읽기 하나뿐이다.
+  const services = await readServiceMenu();
   // 「지금 여기」로 눌러 그릴 칸을 고르는 열쇠 — 이 시스템의 client_id 다
   // (`dss-board`). 목록이 있을 때만 읽는다: 없으면 그릴 칸 자체가 없고,
   // 설정이 빠진 기계에서 머리말 하나 때문에 모든 화면이 죽으면 안 된다.
@@ -108,38 +91,48 @@ export default async function InternalLayout({
           )
         }
         notificationBell={
-          notifications.items.length === 0 ? null : (
-            /*
-              알림 종(@dss/ui). 머리말 **오른쪽 맨 끝**에 앉는다 — 펼친 목록이
-              종에 오른쪽 끝을 맞춰 왼쪽으로 펼쳐지므로(그쪽 CSS 의 right: 0)
-              가운데에 두면 폰에서 목록이 잘린다. 자리는 site-header.tsx 가
-              정하고, 여기서는 **다 그려진 노드**만 넘긴다(메뉴바와 같은 결).
+          /*
+            알림 종. 머리말 **오른쪽 맨 끝**에 앉는다 — 펼친 목록이 종에
+            오른쪽 끝을 맞춰 왼쪽으로 펼쳐지므로(@dss/ui 의 CSS 는 right: 0)
+            가운데에 두면 폰에서 목록이 잘린다. 자리는 site-header.tsx 가
+            정하고, 여기서는 **다 그려진 노드**만 넘긴다(메뉴바와 같은 결).
 
-              🔵 이번 조각은 **이 게시판 자기 알림만** 그린다. 포털을 거쳐 다른
-              사이트 알림을 합치는 것과, 포털에 내주는 통로는 다음 조각이다.
+            🔵 이제 **이 게시판의 공지와 다른 시스템들의 알림을 함께** 그린다.
+            무엇을 어떻게 합치는지(자기 것이 앞 · 개수는 두 쪽의 합)는
+            components/header-notification-bell.tsx 머리말에 있다. 여기서는
+            값 둘만 넘긴다 — 둘 다 **검증된 세션**에서 온 것이다(쿠키에 박힌
+            값이 아니라 requireSession() 이 읽은 살아 있는 web_users 행이다).
 
-              🔴 `count` 는 `items.length` 가 아니라 질의가 센 **진짜 개수**다.
-              묶음은 받은 수를 그대로 찍으므로(@dss/ui README 7절) 상한
-              (200줄)에 걸려 목록이 잘려도 숫자는 참말이어야 한다.
+            ── 🔴 `<Suspense>` 가 이 조각의 전부다 ───────────────────────
+            앞 조각에서는 **감싸지 않았다.** 그때 기다리는 것은 같은 기계의
+            DB 질의 하나였고 바로 위 requireSession() 이 이미 DB 를 읽으니,
+            떼어 놓아 봐야 얻는 것 없이 들썩임만 늘기 때문이었다. 그 주석에
+            「포털에 물으러 가는 순간 이 판단이 뒤집힌다」고 적어 두었고,
+            **오늘이 그 날이다** — 이제 종이 기다리는 것에 **포털 왕복**이
+            들어 있다(망을 타고, 2초 상한이 걸려 있다 — auth/oidc.ts).
+            이 레이아웃은 모든 화면에 딸려 오므로, 감싸지 않으면 **모든 화면
+            이동이 포털 왕복만큼 느려진다.** 감싸면 머리말과 본문이 먼저 뜨고
+            종만 나중에 흘러 들어온다.
 
-              🔴 items 가 비면 그 조각이 **스스로 null** 이라 이 분기가 없어도
-              머리말은 그대로다. 그래도 위 메뉴바와 같은 모양으로 적어 둔 것은,
-              「알림 0건이면 머리말이 지금과 똑같다」가 묶음의 판단에만 기대지
-              않게 하려는 것이다.
+            fallback 이 null 인 까닭: 알림이 없을 때 종이 아예 안 그려지는
+            것과 **같은 모습**이라 자리가 들썩이지 않는다. 뼈대(skeleton)를
+            두면 알림이 없는 사람에게는 「있다가 사라지는 종」이 된다. 🔴
+            Suspense 는 스스로 DOM 을 만들지 않으므로 머리말의 flex 항목도
+            그 앞 여백도 생기지 않는다 — **알림이 0건이면 머리말이 예전과
+            글자 하나 다르지 않다**(site-header.tsx 의 「래퍼로 감싸지
+            않는다」). 0건 판정은 그 조각이 한다(두 겹 중 바깥 한 겹이 거기로
+            내려갔다. 안쪽 한 겹은 여전히 @dss/ui 자신이다).
 
-              onAcknowledge 를 넘기지 않는다 — 이 게시판의 알림은 **글을 열면
-              사라진다**(열람 기록이 곧 확인이다 — notifications/bell-items.ts).
-              확인 기능도 그 기록을 담을 표도 필요 없다.
-
-              colorScheme 도 넘기지 않는다. 이 사이트는 globals.css 에서
-              color-scheme: light 로 고정이고, 기본값 "host" 는 조상에 .dark 가
-              있을 때만 어두워지므로 그대로 두는 것이 옳다(@dss/ui README 4절).
-            */
-            <NotificationBell
-              items={notifications.items}
-              count={notifications.count}
+            🔴 실패는 이 자리에 오지 않는다 — DB 질의도 포털 왕복도 각자
+            삼키고 빈 목록을 돌려준다. 그래서 error boundary 가 필요 없고,
+            포털이 죽어도 이 머리말은 예전과 똑같이 뜬다.
+          */
+          <Suspense fallback={null}>
+            <HeaderNotificationBell
+              userId={viewer.user.id}
+              subject={viewer.user.authSub}
             />
-          )
+          </Suspense>
         }
       />
       <main className="mx-auto max-w-[1100px] px-4 py-6">{children}</main>
