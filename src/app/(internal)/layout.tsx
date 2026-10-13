@@ -4,7 +4,7 @@ import { ServiceMenuBar } from "@dss/ui";
 
 import { SiteHeader } from "@/components/site-header";
 import { requireSession } from "@/lib/auth/guards";
-import { thisServiceId } from "@/lib/auth/oidc";
+import { portalAppsUrl, thisServiceId } from "@/lib/auth/oidc";
 import { readServiceMenu } from "@/lib/auth/service-menu-cookie";
 
 /**
@@ -41,6 +41,12 @@ export default async function InternalLayout({
     <>
       <SiteHeader
         viewer={viewer}
+        // 포털(dss-auth)로 돌아가는 칸의 주소. 🔴 위 services 와 **엮지
+        // 않는다** — 포털은 포털의 clients 표에 없어 오가기 목록에 끼지
+        // 못하므로(oidc.ts 의 portalAppsUrl), 목록이 비어 메뉴바가 통째로
+        // 사라진 사람에게도 이 칸은 남아야 한다. 그래서 services.length 를
+        // 보지 않고 늘 넘긴다.
+        portalUrl={portalAppsUrl()}
         serviceMenu={
           services.length === 0 ? null : (
             /*
