@@ -3,36 +3,14 @@
 import { redirect } from "next/navigation";
 
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/audit";
-import { devLoginEnabled, findDevUser } from "@/lib/auth/dev-login";
-import { getViewer, safeReturnTo } from "@/lib/auth/guards";
+import { getViewer } from "@/lib/auth/guards";
 import { buildLogoutUrl, oidcConfigured } from "@/lib/auth/oidc";
-import { upsertUserFromClaims } from "@/lib/auth/provision";
-import { createSession, destroySession } from "@/lib/auth/session";
+import { destroySession } from "@/lib/auth/session";
 
 /**
- * 개발용 임시 로그인. dss-auth OIDC 연결 시 폐기 대상.
- * 꺼져 있으면 아무 일도 하지 않는다.
+ * 로그인은 여기에 없다. 들어오는 길은 포털(dss-auth)뿐이다 —
+ * /api/auth/login → 포털 /authorize → /api/auth/callback.
  */
-export async function devLoginAction(formData: FormData): Promise<void> {
-  if (!devLoginEnabled()) redirect("/login?error=dev-off");
-
-  const devUser = findDevUser(String(formData.get("sub") ?? ""));
-  if (!devUser) redirect("/login?error=1");
-
-  const result = await upsertUserFromClaims(devUser);
-  if (!result.ok) redirect("/login?error=blocked");
-
-  await createSession(result.user.id);
-  await writeAudit({
-    actorId: result.user.id,
-    action: AUDIT_ACTIONS.LOGIN,
-    targetType: "USER",
-    targetId: result.user.id,
-    detail: { via: "DEV" },
-  });
-
-  redirect(safeReturnTo(String(formData.get("returnTo") ?? "/")));
-}
 
 /** 이 사이트의 세션만 끊는다. 포털 세션은 그대로 둔다. */
 export async function logoutAction(): Promise<void> {

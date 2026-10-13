@@ -1,11 +1,52 @@
 /**
  * 개발용 가짜 데이터.   npm run seed:dev
  *
- * - DEV_FAKE_LOGIN_ENABLED=true 인 개발 환경에서만 돈다.
+ * - SEED_DEV_ENABLED=true 일 때만 돈다. 이 스크립트는 **DB 에 글을 쓴다** —
+ *   깃발이 없으면 운영 DB 를 가리킨 .env.local 로도 가짜 데이터가 들어간다.
+ *   그래서 기본값은 반드시 꺼짐이고, 개발 DB 에서만 켠다.
  * - 글이 하나도 없을 때만 넣는다. **기존 데이터를 지우거나 덮어쓰지 않는다.**
  * - 글과 이름은 전부 가짜다. 화면 모양을 확인하기 위한 것이다.
  */
 process.loadEnvFile(".env.local");
+
+/**
+ * 가짜 글의 작성자. **실제 사원 명단이 아니다.**
+ *
+ * 예전에는 개발용 임시 로그인의 계정 목록을 빌려 썼다. 2026-10-13 에 임시
+ * 로그인을 걷어내면서 이 파일 안으로 옮겼다 — 이제 이 스크립트는 인증 코드에
+ * 기대지 않는다.
+ *
+ * sub 는 포털이 주는 sub(UUID) 자리를 대신하는 고정값이다. 아래 SEEDS 의
+ * `author` 가 이 배열의 **인덱스**를 가리키므로 순서와 개수를 바꾸지 않는다.
+ */
+type SeedUser = {
+  sub: string;
+  name: string;
+  email: string | null;
+};
+
+const SEED_USERS: SeedUser[] = [
+  {
+    sub: "11111111-1111-4111-8111-111111111111",
+    name: "홍길동(테스트)",
+    email: null,
+  },
+  {
+    sub: "22222222-2222-4222-8222-222222222222",
+    name: "김부장(테스트)",
+    email: null,
+  },
+  {
+    sub: "33333333-3333-4333-8333-333333333333",
+    name: "이과장(테스트)",
+    email: null,
+  },
+  {
+    sub: "44444444-4444-4444-8444-444444444444",
+    name: "박사원(테스트)",
+    email: null,
+  },
+];
 
 type Seed = {
   topic: "MUST_READ" | "NOTICE" | "GENERAL";
@@ -46,9 +87,10 @@ const SEEDS: Seed[] = [
 ];
 
 async function main() {
-  if (process.env.DEV_FAKE_LOGIN_ENABLED !== "true") {
+  // 이 스크립트는 DB 에 글을 쓴다. 깃발을 켠 개발 DB 에서만 돈다.
+  if (process.env.SEED_DEV_ENABLED !== "true") {
     throw new Error(
-      "개발 환경(DEV_FAKE_LOGIN_ENABLED=true)에서만 가짜 데이터를 넣을 수 있습니다.",
+      "개발 환경(SEED_DEV_ENABLED=true)에서만 가짜 데이터를 넣을 수 있습니다.",
     );
   }
 
@@ -56,7 +98,6 @@ async function main() {
   const { sql } = await import("drizzle-orm");
   const { db } = await import("../src/lib/db");
   const { webPosts, webUsers } = await import("../src/lib/db/schema");
-  const { DEV_USERS } = await import("../src/lib/auth/dev-login");
   const { extractText } = await import("../src/lib/post-content/sanitize");
   const { paragraphsDoc } = await import("../src/lib/post-content/types");
 
@@ -64,7 +105,7 @@ async function main() {
   await db
     .insert(webUsers)
     .values(
-      DEV_USERS.map((u) => ({
+      SEED_USERS.map((u) => ({
         authSub: u.sub,
         displayName: u.name,
         email: u.email,
@@ -90,7 +131,7 @@ async function main() {
 
   const DAY = 24 * 60 * 60 * 1000;
   const rows = SEEDS.map((seed) => {
-    const authorSub = DEV_USERS[seed.author].sub;
+    const authorSub = SEED_USERS[seed.author].sub;
     const authorId = idBySub.get(authorSub);
     if (!authorId) throw new Error(`테스트 계정을 찾지 못했습니다: ${authorSub}`);
 

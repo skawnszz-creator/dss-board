@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
 
-import { devLoginAction } from "@/app/actions/auth";
-import { DEV_USERS, devLoginEnabled } from "@/lib/auth/dev-login";
 import { getViewer, safeReturnTo } from "@/lib/auth/guards";
 import { oidcConfigured } from "@/lib/auth/oidc";
 
@@ -12,7 +10,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   unknown_role:
     "계정의 역할 설정에 문제가 있어 들어갈 수 없습니다. 관리자에게 문의하세요.",
   "not-ready": "통합 로그인 포털 연결이 아직 준비되지 않았습니다.",
-  "dev-off": "임시 로그인이 꺼져 있습니다.",
 };
 
 export default async function LoginPage({
@@ -29,7 +26,6 @@ export default async function LoginPage({
 
   const message = sp.error ? ERROR_MESSAGES[sp.error] : null;
   const portalReady = oidcConfigured();
-  const devReady = devLoginEnabled();
 
   return (
     <main className="mx-auto flex min-h-full max-w-md flex-col justify-center px-4 py-16">
@@ -66,34 +62,6 @@ export default async function LoginPage({
           </p>
         )}
       </div>
-
-      {devReady && (
-        /* dss-auth OIDC 연결 시 폐기 대상 */
-        <div className="mt-6 rounded border border-dashed border-amber-300 bg-amber-50 p-5">
-          <p className="text-xs font-semibold text-amber-800">
-            개발용 임시 로그인 (테스트 계정)
-          </p>
-          <p className="mt-1 text-xs text-amber-700">
-            포털 연결 전에 화면을 확인하기 위한 것입니다. 실제 사원 명단이 아닙니다.
-          </p>
-          <ul className="mt-3 space-y-2">
-            {DEV_USERS.map((user) => (
-              <li key={user.sub}>
-                <form action={devLoginAction}>
-                  <input type="hidden" name="sub" value={user.sub} />
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <button
-                    type="submit"
-                    className="w-full rounded border border-amber-300 bg-white px-3 py-2 text-left text-sm text-gray-800 hover:border-amber-500 hover:bg-amber-100"
-                  >
-                    {user.name}
-                  </button>
-                </form>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </main>
   );
 }
