@@ -75,11 +75,18 @@ export async function getDiscovery(): Promise<Discovery> {
   return doc;
 }
 
-/** JWKS 는 캐싱하되 모르는 kid 가 오면 jose 가 알아서 다시 받아온다. */
+/**
+ * JWKS 는 캐싱하되 모르는 kid 가 오면 jose 가 알아서 다시 받아온다.
+ *
+ * 🔵 내보내는 이유: 포털이 우리에게 물으러 올 때 쓰는 서명 토큰도
+ * **같은 열쇠 한 벌**로 검증한다(auth/portal-service-token.ts). 거기서 새로
+ * 만들면 캐시가 두 벌이 되고, 포털이 열쇠를 바꾸는 날 한쪽만 늦게 따라간다.
+ * (동작은 전과 같다 — `export` 한 낱말만 더했다.)
+ */
 let jwksCache: { uri: string; set: ReturnType<typeof createRemoteJWKSet> } | null =
   null;
 
-function getJwks(uri: string) {
+export function getJwks(uri: string) {
   if (!jwksCache || jwksCache.uri !== uri) {
     jwksCache = { uri, set: createRemoteJWKSet(new URL(uri)) };
   }
