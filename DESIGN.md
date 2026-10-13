@@ -17,9 +17,7 @@
                               |                          |
                              예                   "포털로 로그인" 버튼
                               |                          |
-                              |              (개발 중에는 임시 로그인 목록)
-                              |                          |
-                              |                 포털 dss-auth :3100
+                              |              포털 dss-auth :3100 /authorize
                               |                          |
                               |              /api/auth/callback 로 돌아옴
                               |                          |
@@ -40,7 +38,7 @@
             /posts/[id]/edit      삭제 확인 → 목록으로
                   수정
 
-                  관리자만 ──→ /admin/users  직원 역할 변경
+                  관리자만 ──→ /admin/users  게시판 사용 중지·재개
 ```
 
 ### 라우트 구조
@@ -49,7 +47,7 @@
 src/app/
   layout.tsx                              루트. 한글 폰트·Tailwind
   (public)/
-    login/page.tsx                        로그인 안내 (+ 개발용 임시 로그인)
+    login/page.tsx                        로그인 안내 (포털로 보내는 버튼 하나)
   (internal)/                             ★ 여기 아래는 전부 로그인 필수
     layout.tsx                            requireSession() · 상단 헤더
     page.tsx                              글 목록 (메인)
@@ -58,10 +56,11 @@ src/app/
     posts/[id]/edit/page.tsx              글 수정
     admin/users/page.tsx                  사용자 관리 (requireAdmin)
   actions/
-    auth.ts                               로그인·로그아웃
+    auth.ts                               로그아웃 (로그인은 포털로만)
     posts.ts                              글 작성·수정·삭제·열람기록
-    admin.ts                              역할 변경
+    admin.ts                              게시판 사용 중지·재개
   api/
+    auth/login/route.ts                   포털 /authorize 로 보내는 자리
     auth/callback/route.ts                포털에서 돌아오는 자리
     images/route.ts                       POST 본문 사진 업로드
     images/[id]/route.ts                  GET 사진 내려주기 (권한 검사)
@@ -85,7 +84,7 @@ src/app/
 | `oidc.ts` | 포털의 discovery 문서를 읽고 `/authorize` 로 보낸다. 돌아온 code 를 토큰으로 바꾸고 ID 토큰을 검증한다 |
 | `session.ts` | 이 사이트 세션 쿠키 발급·조회·삭제. **파일 하나뿐** |
 | `guards.ts` | `requireSession()` · `requireAdmin()` · `canEditPost()`. 권한 판정은 여기서만 |
-| `dev-login.ts` | **개발용 임시 로그인.** 맨 위에 `// dss-auth OIDC 연결 시 폐기 대상` 주석 |
+| `provision.ts` | 포털에서 넘어온 사람을 `web_users` 에 잇는다. 포털이 보낸 `role` 을 어떻게 다룰지도 여기서 정한다(`decideRole`) |
 
 ### ID 토큰 검증 (`jose`, 하나도 빠뜨리지 않는다)
 
@@ -111,10 +110,30 @@ src/app/
 - **서버 저장형**: 쿠키에는 랜덤 토큰 원문, DB 에는 그 sha256 만. 퇴사자를 즉시 끊을 수 있다
 - 수명 **12시간** (포털 SSO 세션 절대 만료를 넘기지 않는다)
 
-### 처음 로그인하는 사람
+### 처음 로그인하는 사람 · 역할
 
-`auth_sub` 가 처음 보이면 `web_users` 에 행을 만든다. **역할은 항상 `MEMBER`.**
+`auth_sub` 가 처음 보이면 `web_users` 에 행을 만든다.
 이름·이메일은 로그인할 때마다 토큰 값으로 갱신한다. 사람 식별은 **`auth_sub` 로만** 한다.
+
+**역할의 출처는 포털 하나다**(2026-10-13 사용자 결정). 포털이 ID 토큰에 실어 보낸
+`role` 을 **로그인할 때마다** 반영한다 (`provision.ts` 의 `decideRole`).
+
+| 포털이 보낸 `role` | 이 사이트의 처리 |
+|---|---|
+| 클레임이 아예 없다 | **지금 값을 그대로 둔다.** 처음 보는 사람은 `MEMBER` 로 만든다 |
+| `MEMBER` · `ADMIN` | 그대로 적용한다 |
+| 그 밖의 값 | **로그인을 거절한다** (DB 를 건드리기 전에 판정한다) |
+
+클레임이 없는 것을 정상으로 보는 이유: 이 게시판은 포털에 **전 직원 공개**로 등록돼 있어
+부여 행이 없는 사람이 보통이고, 포털은 부여 행이 있을 때만 `role` 을 싣는다.
+없다고 거절하면 아무도 못 들어온다.
+
+- **게시판에서는 역할을 바꾸지 않는다.** `/admin/users` 에 남은 일은 사용 중지·재개뿐이고,
+  역할 변경 서버 액션은 화면에서 버튼을 뺀 것에 더해 **서버에서도 언제나 거절**한다
+- 역할을 주는 곳은 포털의 `/admin/users` → 「시스템 접근·역할」.
+  바뀐 역할은 **그 사람이 다시 로그인할 때** 반영된다
+- `scripts/make-admin.ts` 는 포털이 막혔을 때의 **비상구**다. 거기서 올린 역할도
+  다음 로그인에 포털 값으로 덮인다
 
 ### 로그아웃 2종
 
@@ -478,19 +497,29 @@ canDeletePost(viewer, post) = 위와 같다
 
 ### `.env.local` (git 에 넣지 않는다 · 화면에 출력하지 않는다)
 
+> 이름과 설명의 **기준은 `.env.example`** 이다. 아래는 그 요약이고, 어긋나면 `.env.example` 이 맞다.
+
 ```
-DATABASE_URL=postgres://<계정>:<비밀번호>@127.0.0.1:5432/dss_board
+DATABASE_URL=postgres://<계정>:<비밀번호>@localhost:5432/dss_board   # Docker 로 띄운 PC 는 5434
 PORT=3400
 STORAGE_ROOT=C:\WEB-DATA\dss-board      # NAS 에서는 /data
 SESSION_COOKIE_SECURE=false             # HTTPS 붙이면 true
 SESSION_HOURS=12
+SEED_DEV_ENABLED=false                  # 개발용 가짜 글 넣기. 기본값은 꺼짐
 
-DEV_FAKE_LOGIN_ENABLED=true             # 개발 PC 에서만. 기본값은 꺼짐
-OIDC_ISSUER=                            # 포털 완성 후 채운다
+OIDC_ISSUER=auto                        # → http://<이 기계 주소>:3100
 OIDC_CLIENT_ID=dss-board
 OIDC_CLIENT_SECRET=                     # NEXT_PUBLIC_ 접두사 절대 금지
-OIDC_REDIRECT_URI=http://localhost:3400/api/auth/callback
+OIDC_REDIRECT_URI=auto                  # → http://<이 기계 주소>:3400/api/auth/callback
+AUTH_STATE_SECRET=                      # PKCE 상태 쿠키 서명 열쇠
 ```
+
+**`auto` 가 하는 일**: 서버가 뜰 때 이 기계의 사내망 IPv4 를 직접 찾아
+(`src/lib/lan-address.ts`) 위 주소를 만든다. 개발 PC 도 NAS 도 주소를 DHCP 로 받으므로
+Wi-Fi 가 바뀌어도 고칠 곳이 없고, 요청에서 만들어 쓰는 것과 달리 **누가 부르든 같은
+문자열**이 나온다. 포털도 같은 방식으로 자기 주소를 찾아 두 값이 어긋나지 않는다.
+`auto` 는 언제나 `http` 다 — **운영(HTTPS 도메인)은 이 기계가 알아낼 수 없으므로 직접 적는다.**
+직접 적은 값은 포털에 등록된 값과 문자 단위로 같아야 한다.
 
 `src/lib/env.ts` 에서 한곳으로 읽고, **비밀값이 없으면 조용히 기본값으로 넘어가지 않고 throw** 한다.
 
@@ -516,13 +545,13 @@ OIDC_REDIRECT_URI=http://localhost:3400/api/auth/callback
 |---|---|---|
 | 1 | 프로젝트 생성 · 설정 | Next 16.3.3 · Tailwind 4 · Drizzle · `output: standalone` |
 | 2 | DB 스키마 + 마이그레이션 **생성** | `npx drizzle-kit generate`. **적용은 승인 후** |
-| 3 | 인증 어댑터 · 임시 로그인 · 가드 | 로그인해서 들어오는 것까지 |
+| 3 | 인증 어댑터 · 가드 | 로그인해서 들어오는 것까지 |
 | 4 | **글 목록** | 정렬(필독 고정) · 검색 · 주제 필터 · 20개 페이지 |
 | 5 | 글 쓰기 · 수정 | 에디터 + 사진 붙여넣기 + **첨부파일 업로드** |
 | 6 | 글 보기 | 본문 렌더러 + **첨부 내려받기** + 열람자 명단 |
 | 7 | 삭제 | 확인 후 삭제 |
-| 8 | 사용자 관리 | 관리자 역할 지정 |
-| 9 | 첫 관리자 지정 스크립트 · Dockerfile · README | tsx 스크립트 |
+| 8 | 사용자 관리 | 계정 사용 중지·재개 (역할은 포털이 정한다 — 2절) |
+| 9 | 관리자 지정 비상구 스크립트 · Dockerfile · README | tsx 스크립트 |
 
 **한 번에 하나씩** 만들고 중간중간 화면으로 확인받는다.
 

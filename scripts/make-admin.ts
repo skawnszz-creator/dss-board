@@ -20,7 +20,7 @@ async function main() {
   const arg = process.argv[2]?.trim();
   if (!arg) {
     throw new Error(
-      '사용법: npm run make:admin -- "이남준"   (이름 또는 auth_sub)',
+      '사용법: npm run make:admin -- "홍길동"   (이름 또는 auth_sub)',
     );
   }
 
