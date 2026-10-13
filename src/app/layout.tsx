@@ -11,10 +11,20 @@ import "./globals.css";
  * ((internal)/layout.tsx 가 SiteHeader 의 serviceMenu 로 내려보낸다). 로그인
  * 화면에 이 줄이 닿아도 바뀌는 것은 없다.
  *
- * 🔴 알림 종(notification-bell.css)은 **가져오지 않는다** — 이번에 붙인 것은
- * 메뉴바 하나다. 그 묶음은 조각마다 CSS 한 장이라 쓰는 것만 부르면 된다.
+ * 🔴 그 묶음은 **조각마다 CSS 한 장**이다. 종은 바로 아래 다른 파일로 따로
+ * 부른다 — 묶어 두려면 CSS 안에서 @import 를 해야 하는데 그것은 그쪽 시험이
+ * 막는다(@dss/ui README 7절).
  */
 import "@dss/ui/styles.css";
+/*
+ * 머리말 오른쪽 끝에 앉는 알림 종(@dss/ui)의 생김새. 🔴 메뉴바의 styles.css 와
+ * **다른 파일**이다(바로 위).
+ *
+ * 규칙은 전부 .dss-bell 아래에만 있고, 종은 그릴 알림이 있을 때만 그려진다
+ * ((internal)/layout.tsx 가 SiteHeader 의 notificationBell 로 내려보낸다).
+ * 로그인 화면에 이 줄이 닿아도 바뀌는 것은 없다.
+ */
+import "@dss/ui/notification-bell.css";
 
 export const metadata: Metadata = {
   title: "DSS 사내 게시판",

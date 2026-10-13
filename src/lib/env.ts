@@ -42,6 +42,42 @@ function flag(name: string): boolean {
   return process.env[name] === "true";
 }
 
+/**
+ * redirect_uri 에서 「밖에서 이 사이트에 닿는 주소」만 떼어 낸다.
+ *
+ * ── 🔴 왜 이 값에서 뽑는가 (2026-09-29 운영에서 실제로 난 일) ────────────
+ * 개선요청 시스템은 전에 이 기계의 첫 사설 IPv4(primaryLanAddress)로 만들었다.
+ * 개발 PC 에서는 192.168.x.x 가 잡혀 맞았지만, NAS 의 도커 안에서는 **도커가
+ * 컨테이너에 준 주소**가 잡힌다. 그 판을 배포한 날 A/S 의 종에 뜬 알림 링크가
+ * `http://172.20.0.7:3500/` 이었고, 눌러도 아무 데도 가지 못했다 — 밖에서 닿을
+ * 수 없는 주소다. 포털은 「절대 주소이고 http 니까」 그대로 통과시키므로
+ * **조용히** 틀린 주소가 나간다. 🔴 `auto` 로 되돌리지 않는다.
+ *
+ * ── 왜 새 환경변수를 두지 않는가 ────────────────────────────────────────
+ * OIDC_REDIRECT_URI 가 이미 **그 주소**다. 포털이 로그인 끝에 브라우저를 되돌려
+ * 보내는 곳이라, 정의상 「밖에서 이 사이트에 닿는 주소」와 같아야 한다. 게다가
+ * 포털에 등록된 값과 글자 단위로 같아야 로그인이 된다 — 따로 관리할 설정이
+ * 하나도 늘지 않고, 틀리면 알림이 아니라 **로그인 단계에서 바로** 드러난다.
+ * 값을 하나 더 두면 둘이 어긋날 수 있고, 어긋난 쪽이 알림 링크라면 증상은
+ * 「다른 사이트의 종에서 누르면 엉뚱한 데로 간다」 하나뿐이라 원인을 찾기 어렵다.
+ * 개발의 `auto` 는 아래 oidcRedirectUri 가 이미 풀어 준다.
+ *
+ * 콜백 경로를 떼어 낼 수 없으면 조용히 물러서지 않고 던진다 — 그냥 넘어가면
+ * 알림 링크가 `…/api/auth/callback/posts/<id>` 꼴이 된다.
+ *
+ * (개선요청의 env.ts `ownBaseUrlFrom` · A/S 의 config/sso.ts `getAppBaseUrl` ·
+ * 휴가의 env.ts `appBaseUrlFrom` 과 같은 판정이다. 🔴 이름만 다르다 — 이
+ * 저장소는 OIDC_REDIRECT_URI 이고 콜백 경로도 `/api/auth/callback` 이다.)
+ */
+export function ownBaseUrlFrom(redirectUri: string): string {
+  if (!redirectUri.endsWith(OIDC_CALLBACK_PATH)) {
+    throw new Error(
+      `OIDC_REDIRECT_URI 는 ${OIDC_CALLBACK_PATH} 로 끝나야 합니다 — 이 값에서 이 사이트 자신의 주소도 읽습니다.`,
+    );
+  }
+  return redirectUri.slice(0, -OIDC_CALLBACK_PATH.length).replace(/\/+$/, "");
+}
+
 export const env = {
   /** PostgreSQL 접속 주소 (이 사이트 전용 DB dss_board) */
   get databaseUrl(): string {
@@ -125,6 +161,28 @@ export const env = {
     const raw = required("OIDC_REDIRECT_URI");
     if (!isAutoValue(raw)) return raw;
     return `${resolveAutoUrl(raw, OWN_PORT, primaryLanAddress())}${OIDC_CALLBACK_PATH}`;
+  },
+
+  /**
+   * 이 사이트 자신의 주소 앞머리. 뒤에 슬래시를 남기지 않는다.
+   * 운영은 `https://board.dss21.co.kr`, 개발은 `http://192.168.x.x:3400` 꼴.
+   *
+   * 무엇에 쓰나: 이 사이트가 만드는 알림의 `href` 를 **절대 주소**로 만드는 데
+   * 쓴다(notifications/bell-items.ts). 자기 화면에서는 `/posts/…` 만으로도
+   * 열리지만, 다음 조각에서 이 목록이 포털을 거쳐 **다른 시스템의 종**에
+   * 실린다 — 포털이 상대경로로 온 줄을 버리기도 하거니와, 남의 화면에 그려지는
+   * 링크라 어차피 절대 주소여야 한다.
+   *
+   * 🔴 **이 기계의 랜 주소로 만들지 않는다.** 까닭과 고친 방식은 위
+   * `ownBaseUrlFrom` 머리말에 적었다.
+   *
+   * 여기서 던질 수 있다 — OIDC_REDIRECT_URI 가 없거나, `auto` 인데 랜/Wi-Fi 가
+   * 끊겨 주소를 못 찾거나, 콜백 경로로 끝나지 않을 때다. 알림을 만드는 쪽이
+   * 그것을 삼켜 빈 목록으로 돌아간다 — 종 하나 때문에 모든 화면이 죽지 않게
+   * (notifications/queries.ts).
+   */
+  get ownBaseUrl(): string {
+    return ownBaseUrlFrom(env.oidcRedirectUri);
   },
 
   /**

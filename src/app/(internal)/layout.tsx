@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 
-import { ServiceMenuBar } from "@dss/ui";
+import { NotificationBell, ServiceMenuBar } from "@dss/ui";
 
 import { SiteHeader } from "@/components/site-header";
 import { requireSession } from "@/lib/auth/guards";
 import { portalAppsUrl, thisServiceId } from "@/lib/auth/oidc";
 import { readServiceMenu } from "@/lib/auth/service-menu-cookie";
+import { listUnreadNoticeNotifications } from "@/lib/notifications/queries";
 
 /**
  * 사내 구간. 이 아래 모든 화면은 로그인 필수다.
@@ -31,7 +32,27 @@ export default async function InternalLayout({
   //
   // 쿠키가 없거나 못 믿을 것이면 빈 배열이고, 그때는 아래에서 조각 자체를
   // 만들지 않는다 — 머리말이 예전과 똑같다(빈 자리도 남지 않는다).
-  const services = await readServiceMenu();
+  //
+  // ── 그리고 **알림 종** ────────────────────────────────────────────────
+  // 이 사람이 **아직 열어 보지 않은 공지**(notifications/queries.ts). 위
+  // 쿠키 읽기와 서로 기다릴 이유가 없어 나란히 간다.
+  //
+  // 🔴 질의가 실패해도 화면은 뜬다 — listUnreadNoticeNotifications 가 어떤
+  // 실패든 삼키고 빈 목록을 돌려준다(그 파일 머리말). 종 하나 때문에 모든
+  // 화면이 죽으면 안 된다.
+  //
+  // 🔵 **<Suspense> 로 감싸지 않는다.** 개선요청은 감쌌지만 그쪽이 기다리는
+  //    것은 **포털 왕복**(망을 타고, 1.5초 상한이 걸려 있다)이다. 여기서
+  //    기다리는 것은 **같은 기계의 DB 질의 하나**이고, 이 레이아웃은 바로 위
+  //    requireSession() 에서 이미 DB 를 한 번 읽는다 — DB 가 느리거나 멎으면
+  //    종을 떼어 놓아도 화면은 어차피 서지 않는다. 감싸면 얻는 것 없이
+  //    경계 하나와 「머리말이 그려진 뒤 종이 끼어드는」 들썩임만 는다.
+  //    다음 조각에서 **포털에 남의 알림을 물으러 가는 순간** 이 판단이
+  //    달라진다 — 그때 감싸면 된다.
+  const [services, notifications] = await Promise.all([
+    readServiceMenu(),
+    listUnreadNoticeNotifications(viewer.user.id),
+  ]);
   // 「지금 여기」로 눌러 그릴 칸을 고르는 열쇠 — 이 시스템의 client_id 다
   // (`dss-board`). 목록이 있을 때만 읽는다: 없으면 그릴 칸 자체가 없고,
   // 설정이 빠진 기계에서 머리말 하나 때문에 모든 화면이 죽으면 안 된다.
@@ -83,6 +104,40 @@ export default async function InternalLayout({
               currentServiceId={currentServiceId}
               variant="inline"
               className="shrink-0 mr-auto"
+            />
+          )
+        }
+        notificationBell={
+          notifications.items.length === 0 ? null : (
+            /*
+              알림 종(@dss/ui). 머리말 **오른쪽 맨 끝**에 앉는다 — 펼친 목록이
+              종에 오른쪽 끝을 맞춰 왼쪽으로 펼쳐지므로(그쪽 CSS 의 right: 0)
+              가운데에 두면 폰에서 목록이 잘린다. 자리는 site-header.tsx 가
+              정하고, 여기서는 **다 그려진 노드**만 넘긴다(메뉴바와 같은 결).
+
+              🔵 이번 조각은 **이 게시판 자기 알림만** 그린다. 포털을 거쳐 다른
+              사이트 알림을 합치는 것과, 포털에 내주는 통로는 다음 조각이다.
+
+              🔴 `count` 는 `items.length` 가 아니라 질의가 센 **진짜 개수**다.
+              묶음은 받은 수를 그대로 찍으므로(@dss/ui README 7절) 상한
+              (200줄)에 걸려 목록이 잘려도 숫자는 참말이어야 한다.
+
+              🔴 items 가 비면 그 조각이 **스스로 null** 이라 이 분기가 없어도
+              머리말은 그대로다. 그래도 위 메뉴바와 같은 모양으로 적어 둔 것은,
+              「알림 0건이면 머리말이 지금과 똑같다」가 묶음의 판단에만 기대지
+              않게 하려는 것이다.
+
+              onAcknowledge 를 넘기지 않는다 — 이 게시판의 알림은 **글을 열면
+              사라진다**(열람 기록이 곧 확인이다 — notifications/bell-items.ts).
+              확인 기능도 그 기록을 담을 표도 필요 없다.
+
+              colorScheme 도 넘기지 않는다. 이 사이트는 globals.css 에서
+              color-scheme: light 로 고정이고, 기본값 "host" 는 조상에 .dark 가
+              있을 때만 어두워지므로 그대로 두는 것이 옳다(@dss/ui README 4절).
+            */
+            <NotificationBell
+              items={notifications.items}
+              count={notifications.count}
             />
           )
         }
