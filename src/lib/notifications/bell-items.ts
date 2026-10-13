@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * 이 게시판의 **자체 알림** — 「아직 열어 보지 않은 공지」
+ * 이 게시판의 **자체 알림** — 「아직 열어 보지 않은 필독·공지」
  * ============================================================================
  * 머리말의 알림 종(@dss/ui 의 NotificationBell)이 받는 아홉 칸을 만든다.
  * 이 파일은 **순수 계산만** 한다 — DB 도 React 도 세션도 환경변수도 모른다.
@@ -9,13 +9,15 @@
  *
  * ── 🔴 알림 표를 만들지 않는다 ───────────────────────────────────────────
  * 새 표도 마이그레이션도 없다. 알림은 이미 있는 두 표에서 **매 요청
- * 파생**한다 — 공지 글(web_posts)과 「누가 열었는가」(web_post_views). 알림을
+ * 파생**한다 — 글(web_posts)과 「누가 열었는가」(web_post_views). 알림을
  * 따로 저장하면 글과 알림이 두 벌의 진실이 되어 언젠가 어긋난다(개선요청·A/S
  * 가 같은 길을 쓴다).
  *
  * ── 🔴 쓰는 분이 정한 것 둘 ─────────────────────────────────────────────
- * 1. **알림이 되는 글은 공지(NOTICE)뿐이다.** 필독(MUST_READ)도 일반(GENERAL)
- *    도 아니다.
+ * 1. **알림이 되는 글은 필독(MUST_READ)과 공지(NOTICE) 둘이다.**
+ *    일반(GENERAL)은 아니다. 🔴 처음(2026-10-13 오전)에는 공지 하나뿐이었고,
+ *    같은 날 쓰는 분이 **필독도 알림이 되게** 바꾸었다. 그래서 이 파일의 종류는
+ *    하나가 아니라 목록(NOTIFICATION_TOPICS)이고, 줄마다 종류가 다를 수 있다.
  * 2. **그 글을 열면 사라진다.** 기한은 없다 — 30일이 지나도 안 열었으면 남는다.
  *    「열었다」를 적는 곳은 글 보기 화면의 recordPostView 하나다
  *    (app/actions/posts.ts). 알림 쪽에서 따로 확인(acknowledge)을 적지 않으므로
@@ -30,21 +32,41 @@ import { formatListDate } from "@/lib/format";
 import { TOPIC_LABELS } from "@/lib/labels";
 
 /**
- * 알림이 되는 주제. 🔴 **공지 하나뿐이다**(위 머리말).
+ * 알림이 되는 주제 — 🔴 **필독과 공지 둘**이다. 일반(GENERAL)은 아니다(위 머리말).
  *
- * 질의의 조건이자 종에 실리는 `kind` 이기도 하다 — 둘이 같은 값이어야 「종에
- * 뜬 종류」와 「거른 주제」가 갈라지지 않는다. 그래서 한 상수에서 나온다.
+ * 질의의 조건이자 종에 실리는 `kind` 가 나오는 곳이기도 하다 — 둘이 같은 값이어야
+ * 「종에 뜬 종류」와 「거른 주제」가 갈라지지 않는다. 종류가 둘이 된 지금도 그
+ * 성질은 그대로다: 질의는 **이 목록으로 거르고**(notifications/queries.ts 의 조건
+ * 1번), 종에 실리는 종류는 **거기서 걸러 온 그 줄의 주제 그대로**다(아래
+ * buildNoticeNotificationItems). 어느 쪽에도 손으로 적은 코드가 없다.
+ *
+ * 🔵 여기 적힌 차례는 뜻이 없다 — 줄의 차례는 질의가 정한다(필독이 위).
+ * 🔴 `satisfies` 가 오타와 GENERAL 을 막는다 — PostTopic 이 아닌 값은 컴파일이 깨진다.
  */
-export const NOTIFICATION_TOPIC: PostTopic = "NOTICE";
+export const NOTIFICATION_TOPICS = [
+  "MUST_READ",
+  "NOTICE",
+] as const satisfies readonly PostTopic[];
+
+/** 알림이 되는 주제 하나. */
+export type NotificationTopic = (typeof NOTIFICATION_TOPICS)[number];
 
 /**
- * 종류 코드. @dss/ui 는 이 값으로 **색 한 칸만** 고른다(그쪽 tone.ts) —
- * 종류 목록을 아는 분기가 묶음에 한 군데도 없다.
+ * 종류 코드 — 🔴 **주제 코드 그대로다.** 되짚는 표도 변환도 없다(그래서 갈라질
+ * 수가 없다). @dss/ui 는 이 값으로 **색 한 칸만** 고르므로(그쪽 tone.ts) 종류가
+ * 둘이 되면 색도 저절로 갈린다 — 묶음에는 종류 목록을 아는 분기가 한 군데도 없다.
  */
-export const NOTIFICATION_KIND: string = NOTIFICATION_TOPIC;
+export function notificationKind(topic: NotificationTopic): string {
+  return topic;
+}
 
-/** 사람이 읽는 종류 이름("공지"). 🔴 색과 **함께 글자로도** 그려진다. */
-export const NOTIFICATION_KIND_LABEL: string = TOPIC_LABELS[NOTIFICATION_TOPIC];
+/**
+ * 사람이 읽는 종류 이름("필독"·"공지"). 🔴 색과 **함께 글자로도** 그려진다.
+ * 🔴 손으로 적지 않는다 — 목록 화면이 쓰는 그 이름표에서 온다(labels.ts).
+ */
+export function notificationKindLabel(topic: NotificationTopic): string {
+  return TOPIC_LABELS[topic];
+}
 
 /**
  * 이 시스템의 사람이 읽는 이름. 종에서 줄마다 작게 붙는다.
@@ -88,7 +110,7 @@ export type BoardNotificationFeed = {
 };
 
 /**
- * 알림으로 만들 공지 한 줄. 종에 필요한 칸만 받는다.
+ * 알림으로 만들 글 한 줄. 종에 필요한 칸만 받는다.
  *
  * 목록 조회(posts/queries.ts 의 listPosts)를 돌려쓰지 않는 이유: 그쪽은 첨부
  * 개수까지 세고 쪽수를 계산하는데 종에는 한 칸도 쓰이지 않는다. 종은 **모든
@@ -97,6 +119,11 @@ export type BoardNotificationFeed = {
 export type NoticeNotificationSource = {
   /** 글 id(uuid). 알림 id 와 링크가 이 값에서 나온다. */
   id: string;
+  /**
+   * 🔴 그 줄의 주제. 종에 실리는 `kind`·`kindLabel` 이 **여기서** 나온다 —
+   * 종류가 둘이 된 뒤로는 목록 전체가 아니라 **줄마다** 종류가 정해진다.
+   */
+  topic: NotificationTopic;
   title: string;
   /** 쓴 사람 이름(web_users.display_name). */
   authorName: string;
@@ -143,11 +170,11 @@ function detailOf(post: NoticeNotificationSource): string {
 }
 
 /**
- * 공지 줄 → 종이 받는 목록.
+ * 필독·공지 줄 → 종이 받는 목록.
  *
  * ── 차례는 받은 그대로다 ────────────────────────────────────────────────
- * 여기서 다시 정렬하지 않는다. 질의가 이미 **새 글부터** 준다
- * (notifications/queries.ts). 두 곳에서 각자 정렬하면 언젠가 갈린다.
+ * 여기서 다시 정렬하지 않는다. 질의가 이미 **필독부터, 그 안에서 새 글부터**
+ * 준다(notifications/queries.ts). 두 곳에서 각자 정렬하면 언젠가 갈린다.
  *
  * ── 🔴 아홉 칸이 전부 채워진다 ──────────────────────────────────────────
  * @dss/ui 의 NotificationBellItem 은 아홉 칸이 모두 필수 string 이고, **없는
@@ -182,8 +209,10 @@ export function buildNoticeNotificationItems(input: {
       sourceId: input.sourceId,
       sourceName: NOTIFICATION_SOURCE_NAME,
       id,
-      kind: NOTIFICATION_KIND,
-      kindLabel: NOTIFICATION_KIND_LABEL,
+      // 🔴 **그 줄의 주제 그대로**다. 질의가 NOTIFICATION_TOPICS 로 거른 값이라
+      //    「종에 뜬 종류」와 「거른 주제」가 갈라질 수 없다(위 상수 주석).
+      kind: notificationKind(post.topic),
+      kindLabel: notificationKindLabel(post.topic),
       subject: post.title,
       detail: detailOf(post),
       // 🔴 **절대 주소**다. 남의 종에 그려질 링크이기도 하거니와, 포털이

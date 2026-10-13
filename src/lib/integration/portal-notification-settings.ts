@@ -24,10 +24,12 @@
  * 개선요청(dss-improvements)이 같은 자리에서 같은 길을 골랐다.
  *
  * ── 지금 내주는 내용은 **거짓이 아니다** ────────────────────────────────
- * 종류는 하나(공지)이고, 받는 사람은 **전 직원**이다. 그 규칙은 코드에 있다 —
- * notifications/queries.ts 의 조건은 셋(공지인 글 · 아직 안 열었음 · 자기가 쓴
- * 글이 아님)이고 **역할로 거르는 조건이 한 줄도 없다.** 아래 표는 그것을 그대로
- * 옮겨 적은 것이고, `editable: false` 가 「여기서는 못 바꾼다」를 말한다.
+ * 종류는 둘(필독·공지)이고, **둘 다** 받는 사람은 **전 직원**이다. 그 규칙은
+ * 코드에 있다 — notifications/queries.ts 의 조건은 셋(알림이 되는 주제의 글 ·
+ * 아직 안 열었음 · 자기가 쓴 글이 아님)이고 **역할로 거르는 조건이 한 줄도
+ * 없다.** 주제로 갈리는 조건도 없다 — 필독과 공지가 한 질의에서 같은 세 조건을
+ * 지난다. 아래 표는 그것을 그대로 옮겨 적은 것이고, `editable: false` 가
+ * 「여기서는 못 바꾼다」를 말한다.
  *
  * 🔴 설정이 진짜로 필요해지면: 표를 만들고(마이그레이션) `enabled`·`receives` 를
  * 그 표에서 읽은 뒤 `editable` 을 true 로 바꾸고 PUT 이 저장하게 하면 된다.
@@ -43,8 +45,10 @@
 import { USER_ROLES, type UserRole } from "@/lib/codes";
 import { ROLE_LABELS } from "@/lib/labels";
 import {
-  NOTIFICATION_KIND,
-  NOTIFICATION_KIND_LABEL,
+  NOTIFICATION_TOPICS,
+  notificationKind,
+  notificationKindLabel,
+  type NotificationTopic,
 } from "@/lib/notifications/bell-items";
 
 /** 포털 쪽 sub 로 되짚은 이 게시판의 사람. 🔴 살아 있는 사람만 온다. */
@@ -90,22 +94,52 @@ export type PortalSettingsResult<T> =
 
 /**
  * 🔴 **모든 역할이 받는다.** 손으로 적은 값이 아니라 위 머리말이 짚은 사실이다 —
- * 공지 알림 질의에 역할 조건이 없으므로 MEMBER 도 ADMIN 도 똑같이 받는다.
+ * 알림 질의에 역할 조건이 없으므로 MEMBER 도 ADMIN 도 똑같이 받는다. 종류가 둘이
+ * 된 지금도 **종류마다 다르지 않다** — 질의가 하나이기 때문이다.
  * 개선요청은 이 자리에서 권한 함수를 부르지만, 이 게시판에는 **부를 함수가 없다는
  * 것**이 곧 「전 직원」이라는 뜻이다. 언젠가 역할로 거르게 되면 그 판정 함수를
  * 여기서 부르도록 바꾼다 — 그래야 표가 저절로 따라간다.
  */
 const RECEIVES_FOR_EVERY_ROLE = true;
 
-/** 종이 무엇을 언제 보여 주는가. 포털 화면이 종류 줄 밑에 그대로 그린다. */
-const NOTICE_KIND_DESCRIPTION =
-  "아직 열어 보지 않은 공지를 종에 띄웁니다. 그 글을 열면 사라집니다. 자기가 쓴 공지는 오지 않습니다.";
+/**
+ * 종이 무엇을 언제 보여 주는가. 포털 화면이 종류 줄 밑에 그대로 그린다.
+ *
+ * 🔴 종류 이름을 문장에 손으로 적지 않는다 — 같은 줄의 `label` 과 **한 글자도
+ * 다르면 안 되기** 때문이다(「필독 글」이라 적힌 줄의 이름표가 「공지」일 수는
+ * 없다). 그래서 이름도 종에 실리는 그 이름에서 온다.
+ *
+ * 나머지 두 문장(열면 사라진다 · 자기가 쓴 글은 안 온다)은 **종류와 무관하게
+ * 같다** — 질의의 조건 2·3번이 주제를 가리지 않기 때문이다.
+ */
+function kindDescription(topic: NotificationTopic): string {
+  return `아직 열어 보지 않은 ${notificationKindLabel(topic)} 글을 종에 띄웁니다. 그 글을 열면 사라집니다. 자기가 쓴 글은 오지 않습니다.`;
+}
+
+/**
+ * 한 종류의 역할 칸들. 🔴 **종류마다 새로 만든다** — 한 객체를 두 줄이 나눠 쓰면
+ * 언젠가 한쪽을 고친 것이 다른 쪽까지 바꾼다(지금은 JSON 으로 나가 티가 안 난다).
+ */
+function roleCells(): Record<string, PortalSettingsRoleCell> {
+  const cells: Record<string, PortalSettingsRoleCell> = {};
+  for (const code of USER_ROLES) {
+    cells[code] = {
+      receives: RECEIVES_FOR_EVERY_ROLE,
+      defaultReceives: RECEIVES_FOR_EVERY_ROLE,
+    };
+  }
+  return cells;
+}
 
 /**
  * 이 게시판이 내주는 알림 설정 — **코드에 있는 규칙을 그대로 옮겨 적은 표**.
  *
  * 종류 이름과 코드는 종이 쓰는 그 상수에서 온다(notifications/bell-items.ts).
  * 여기에 "NOTICE" 를 손으로 적으면 종에 뜬 종류와 설정 표의 종류가 언젠가 갈린다.
+ *
+ * 🔴 종류가 **몇 개인지도 여기서 정하지 않는다.** NOTIFICATION_TOPICS 를 그대로
+ * 돌므로, 쓰는 분이 알림이 되는 주제를 또 바꾸면 이 표가 저절로 따라간다 — 종에는
+ * 뜨는데 설정 표에는 없는 종류(그 반대도)가 생길 자리가 없다.
  */
 export function boardNotificationSettings(): PortalNotificationSettings {
   const roles: PortalSettingsRole[] = USER_ROLES.map((code) => ({
@@ -115,35 +149,30 @@ export function boardNotificationSettings(): PortalNotificationSettings {
     editable: false,
   }));
 
-  const cells: Record<string, PortalSettingsRoleCell> = {};
-  for (const code of USER_ROLES) {
-    cells[code] = {
-      receives: RECEIVES_FOR_EVERY_ROLE,
-      defaultReceives: RECEIVES_FOR_EVERY_ROLE,
-    };
-  }
+  const kinds: PortalSettingsKind[] = NOTIFICATION_TOPICS.map((topic) => ({
+    kind: notificationKind(topic),
+    label: notificationKindLabel(topic),
+    description: kindDescription(topic),
+    enabled: true,
+    defaultEnabled: true,
+    roles: roleCells(),
+  }));
 
-  return {
-    roles,
-    kinds: [
-      {
-        kind: NOTIFICATION_KIND,
-        label: NOTIFICATION_KIND_LABEL,
-        description: NOTICE_KIND_DESCRIPTION,
-        enabled: true,
-        defaultEnabled: true,
-        roles: cells,
-      },
-    ],
-  };
+  return { roles, kinds };
 }
 
 /** 🔴 세 갈래(없는 사람·막힌 사람·관리자가 아닌 사람)가 **같은 문장**이다. */
 const FORBIDDEN_MESSAGE = "이 시스템의 알림 설정은 볼 수 없습니다.";
 
-/** 저장은 받지 않는다 — 까닭은 위 머리말. 포털이 이 문장을 그대로 그린다. */
-export const SETTINGS_READ_ONLY_MESSAGE =
-  "DSS 사내 게시판은 알림 설정을 바꿀 수 없습니다. 알림 종류가 공지 하나뿐이고, 전 직원에게 보내도록 코드에 정해져 있습니다.";
+/**
+ * 저장은 받지 않는다 — 까닭은 위 머리말. 포털이 이 문장을 그대로 그린다.
+ *
+ * 🔴 종류 이름을 손으로 적지 않는다(표와 같은 자리에서 온다). 개수를 말하지
+ * 않는 것도 일부러다 — 종류가 늘면 「하나뿐」 같은 말이 조용히 거짓이 된다.
+ */
+export const SETTINGS_READ_ONLY_MESSAGE = `DSS 사내 게시판은 알림 설정을 바꿀 수 없습니다. 알림 종류(${NOTIFICATION_TOPICS.map(
+  notificationKindLabel,
+).join("·")})도 받는 사람(전 직원)도 코드에 정해져 있습니다.`;
 
 /**
  * 설정을 **읽는** 것도 자격을 본다 — 관리자만.
