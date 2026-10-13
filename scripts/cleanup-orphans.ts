@@ -7,7 +7,11 @@
  *
  * PowerShell 이 아니라 TypeScript 다. NAS 의 Linux 컨테이너에서도 그대로 돈다.
  */
-process.loadEnvFile(".env.local");
+try {
+  process.loadEnvFile(".env.local");
+} catch {
+  // 운영 컨테이너에는 이 파일이 없다. 그때는 DATABASE_URL 이 환경변수로 들어온다.
+}
 
 const HOURS = Number(process.argv[2] ?? "24");
 
