@@ -205,10 +205,36 @@ export async function exchangeCode(
 /* 3단계 — ID 토큰 검증. 하나라도 빠뜨리면 안 된다 (DESIGN 2절)          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 검증을 마친 ID 토큰에서 꺼내 오는 것 전부.
+ *
+ * 계정을 잇는 데 쓰는 값(AuthClaims — provision.ts 가 정한다)에 **화면에만
+ * 쓰는 값 하나**를 덧댄 모양이다. AuthClaims 자체를 넓히지 않은 이유: 그
+ * 타입은 upsertUserFromClaims 가 받는 것이고, 거기 서비스 목록을 섞으면
+ * 「계정을 만드는 데 쓰는 값」과 「머리말을 그리는 데 쓰는 값」이 한 묶음이
+ * 되어 읽는 사람이 매번 둘을 갈라 봐야 한다. 덧댄 모양이라 그대로 넘겨도
+ * provision.ts 는 예전과 똑같이 받는다.
+ */
+export type VerifiedIdentity = AuthClaims & {
+  /**
+   * 「이 사람이 들어갈 수 있는 사내 시스템 목록」(포털의 `dss_services` 클레임).
+   * 머리말 **안**의 서비스 메뉴바가 그릴 값이고, **권한 판정에는 쓰지 않는다** —
+   * 이 게시판에 들어올 수 있는지는 role 하나로만 정한다(provision.ts).
+   *
+   * 🔴 role 과 같은 이유로 **타입을 단정하지 않는다**: 받는 쪽이 보내는 쪽의
+   * 타입을 정할 수 없다. 무엇을 그릴 수 있는 값으로 칠지는 한 곳이 정한다 —
+   * service-menu-cookie.ts(와 @dss/ui 의 normalizeServiceMenu).
+   *
+   * 포털이 이 클레임을 **안 실을 수도 있다.** 없어도 로그인은 예전과 똑같이
+   * 끝나야 한다(쿠키만 안 구워진다).
+   */
+  services: unknown;
+};
+
 export async function verifyIdToken(
   idToken: string,
   expectedNonce: string,
-): Promise<AuthClaims> {
+): Promise<VerifiedIdentity> {
   const doc = await getDiscovery();
 
   const { payload, protectedHeader } = await jwtVerify(
@@ -250,7 +276,24 @@ export async function verifyIdToken(
     // "빈 값이 왔다" 를 구분할 수 있어야 해서다. 그래서 타입을 단정하지 않고
     // 검증된 payload 에서 꺼내 그대로 넘긴다. 판정은 provision.ts 가 한다.
     role: payload.role,
+    // 서비스 메뉴바가 그릴 목록. 위 sub·role 과 **같은 서명 · 발급자 ·
+    // 수신자 · nonce 보증을 받은** payload 에서 꺼낸다 — 검증이 실패하면
+    // 위에서 이미 던졌으므로, 이 클레임이 검증 없이 밖으로 새어 나갈 길은
+    // 없다. 거르는 일은 service-menu-cookie.ts 가 한다.
+    services: payload.dss_services,
   };
+}
+
+/**
+ * 포털에 등록된 이 시스템의 식별자(= ID 토큰의 aud, `dss-board`).
+ *
+ * 서비스 메뉴바가 「지금 여기」 칸을 눌린 상태로 그리는 데 쓴다. 화면에서
+ * env 를 직접 읽지 않고 이 파일을 거치는 이유는 파일 머리말과 같다 —
+ * 포털과 이야기하는 값을 아는 곳은 이 파일 하나다. 이름이 아니라 식별자로
+ * 견주는 이유는 @dss/ui 의 types.ts 에 적혀 있다(이름은 사람이 바꾼다).
+ */
+export function thisServiceId(): string {
+  return env.oidcClientId;
 }
 
 /* ------------------------------------------------------------------ */

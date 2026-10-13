@@ -19,6 +19,7 @@ import {
   oidcConfigured,
   sealState,
 } from "@/lib/auth/oidc";
+import { clearServiceMenuCookie } from "@/lib/auth/service-menu-cookie";
 import { env } from "@/lib/env";
 
 export async function GET(request: NextRequest): Promise<never> {
@@ -39,6 +40,13 @@ export async function GET(request: NextRequest): Promise<never> {
   }
 
   const store = await cookies();
+
+  // 🔴 지난 사람의 서비스 목록을 여기서 지운다. 공용 PC 에서 다른 사람으로
+  // 다시 들어오는 동안(포털에 다녀오는 몇 초) 앞사람 목록이 머리말에 남아
+  // 있으면 안 된다. 콜백에서 새로 굽지만, 포털이 목록을 안 싣는 사람이면
+  // 거기서 구울 것이 없으므로 **시작할 때 지우는 이 한 줄**이 그 경우를 맡는다.
+  await clearServiceMenuCookie();
+
   store.set(AUTH_STATE_COOKIE, sealState({ state, nonce, verifier, returnTo }), {
     httpOnly: true,
     sameSite: "lax",

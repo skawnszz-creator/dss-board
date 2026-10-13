@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/audit";
 import { getViewer } from "@/lib/auth/guards";
 import { buildLogoutUrl, oidcConfigured } from "@/lib/auth/oidc";
+import { clearServiceMenuCookie } from "@/lib/auth/service-menu-cookie";
 import { destroySession } from "@/lib/auth/session";
 
 /**
@@ -29,6 +30,12 @@ export async function logoutAction(): Promise<void> {
 
   // 1) 이 사이트에서 먼저 나간다.
   await destroySession();
+
+  // 서비스 메뉴바가 쓰는 별도 쿠키도 함께 지운다. 세션을 끊는 차례(게시판
+  // 먼저 → 포털)는 그대로이고, 지우는 일만 그 안에 끼워 넣은 것이다.
+  // 남겨 둘 이유가 없다 — 「이 사람이 어떤 시스템을 쓰는지」가 로그아웃한
+  // 브라우저에 그대로 남는다.
+  await clearServiceMenuCookie();
 
   if (viewer) {
     await writeAudit({

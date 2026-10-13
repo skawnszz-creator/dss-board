@@ -19,7 +19,16 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      // 사내 시스템들이 함께 쓰는 화면 조각(별도 저장소 dss-ui 를 git submodule 로
+      // vendor/ 에 끌어온 것). 저장소 폴더 안의 소스라 Next 가 제 앱 코드처럼
+      // 컴파일한다 — npm install 도, transpilePackages 도, Tailwind @source 도
+      // 필요 없다.
+      "@dss/ui": ["./vendor/dss-ui/src/index.ts"],
+      // 🔴 조각마다 CSS 한 장이다. 지금 이 게시판이 쓰는 것은 **메뉴바 하나**라
+      // 그 한 장만 건다 — 알림 종(notification-bell.css)은 이번에 붙이지 않으므로
+      // 쓰지 않는 경로를 미리 걸어 두지 않는다.
+      "@dss/ui/styles.css": ["./vendor/dss-ui/src/service-menu/service-menu.css"]
     }
   },
   "include": [

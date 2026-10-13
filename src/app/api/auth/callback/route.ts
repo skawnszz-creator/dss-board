@@ -17,6 +17,7 @@ import {
   verifyIdToken,
 } from "@/lib/auth/oidc";
 import { upsertUserFromClaims } from "@/lib/auth/provision";
+import { writeServiceMenuCookie } from "@/lib/auth/service-menu-cookie";
 import { createSession } from "@/lib/auth/session";
 
 type Outcome = { ok: true; returnTo: string } | { ok: false; error: string };
@@ -72,6 +73,16 @@ async function handle(request: NextRequest): Promise<Outcome> {
     }
 
     await createSession(result.user.id);
+
+    // 머리말 **안**에 앉을 서비스 오가기 목록. 세션과 **별도인 서명 쿠키**에
+    // 굽는다(service-menu-cookie.ts 머리말에 왜인지 적어 두었다).
+    //
+    // 🔴 세션을 만든 **뒤**이고, 거절 경로(blocked · unknown_role)는 위에서
+    // 이미 돌아갔다 — 못 들어온 사람의 브라우저에 목록을 남기지 않는다.
+    // 포털이 목록을 안 실었거나 그릴 수 있는 칸이 하나도 없으면 굽지 않고
+    // 남은 것을 지운다. 그때 머리말은 예전과 똑같다.
+    await writeServiceMenuCookie(claims.services);
+
     await writeAudit({
       actorId: result.user.id,
       action: AUDIT_ACTIONS.LOGIN,
