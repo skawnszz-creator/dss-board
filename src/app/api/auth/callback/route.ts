@@ -62,7 +62,13 @@ async function handle(request: NextRequest): Promise<Outcome> {
         action: AUDIT_ACTIONS.LOGIN_BLOCKED,
         detail: { reason: result.reason },
       });
-      return { ok: false, error: "blocked" };
+      // 거절 사유마다 사람이 할 일이 다르니 화면 문구만 갈라 준다.
+      // 무엇이 잘못됐는지 자세히 알리지는 않는다 — 상세 사유는 서버 로그와
+      // 감사 기록에만 남는다.
+      return {
+        ok: false,
+        error: result.reason === "UNKNOWN_ROLE" ? "unknown_role" : "blocked",
+      };
     }
 
     await createSession(result.user.id);

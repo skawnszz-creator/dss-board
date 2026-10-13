@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 
-import { changeUserRole, setUserActive } from "@/app/actions/admin";
+import { setUserActive } from "@/app/actions/admin";
 import { requireAdmin } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { webUsers } from "@/lib/db/schema";
@@ -10,7 +10,9 @@ import type { UserRole } from "@/lib/codes";
 
 const ERRORS: Record<string, string> = {
   "1": "요청을 처리하지 못했습니다.",
-  self: "자기 자신의 역할·사용 여부는 바꿀 수 없습니다.",
+  self: "자기 자신의 사용 여부는 바꿀 수 없습니다.",
+  "role-locked":
+    "역할은 통합 로그인 포털(dss-auth)에서 정합니다. 이 화면에서는 바꿀 수 없습니다.",
 };
 
 export default async function AdminUsersPage({
@@ -34,9 +36,16 @@ export default async function AdminUsersPage({
         사용자 관리
       </h1>
       <p className="mt-2 text-sm text-gray-500">
-        계정은 통합 로그인 포털(dss-auth)이 만듭니다. 여기서는{" "}
-        <strong>이 게시판 안에서의 역할</strong>만 정합니다. 처음 로그인하는
-        사람은 모두 &lsquo;일반&rsquo;으로 들어옵니다.
+        계정도 <strong>역할도 통합 로그인 포털(dss-auth)이 정합니다.</strong>{" "}
+        역할을 바꾸려면 포털의 관리 화면에서 이 게시판(dss-board) 권한을
+        바꾸세요. 바뀐 역할은 그 사람이 <strong>다시 로그인할 때</strong>{" "}
+        반영됩니다. 포털에서 역할을 받지 않은 사람은 &lsquo;일반&rsquo;으로
+        들어옵니다.
+      </p>
+      <p className="mt-1 text-sm text-gray-500">
+        이 화면에서 할 수 있는 일은 <strong>게시판 사용을 중지·재개</strong>하는
+        것뿐입니다. 사용 중지는 이 게시판에만 적용되고 다른 시스템에는 영향이
+        없습니다.
       </p>
 
       {message && (
@@ -56,14 +65,15 @@ export default async function AdminUsersPage({
             <th className="hidden w-40 px-2 py-2 text-center font-normal sm:table-cell">
               마지막 로그인
             </th>
-            <th className="w-44 px-2 py-2 text-center font-normal">바꾸기</th>
+            <th className="w-28 px-2 py-2 text-center font-normal">
+              게시판 사용
+            </th>
           </tr>
         </thead>
         <tbody>
           {users.map((user) => {
             const isMe = user.id === admin.user.id;
             const role = user.role as UserRole;
-            const nextRole: UserRole = role === "ADMIN" ? "MEMBER" : "ADMIN";
 
             return (
               <tr key={user.id} className="border-b border-gray-200">
@@ -96,17 +106,7 @@ export default async function AdminUsersPage({
                   {isMe ? (
                     <p className="text-center text-xs text-gray-400">—</p>
                   ) : (
-                    <div className="flex items-center justify-center gap-1">
-                      <form action={changeUserRole}>
-                        <input type="hidden" name="userId" value={user.id} />
-                        <input type="hidden" name="role" value={nextRole} />
-                        <button
-                          type="submit"
-                          className="h-8 rounded border border-gray-300 px-2 text-xs text-gray-700 hover:bg-gray-50"
-                        >
-                          {nextRole === "ADMIN" ? "관리자로" : "일반으로"}
-                        </button>
-                      </form>
+                    <div className="flex items-center justify-center">
                       <form action={setUserActive}>
                         <input type="hidden" name="userId" value={user.id} />
                         <input

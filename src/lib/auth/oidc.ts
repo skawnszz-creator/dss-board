@@ -244,6 +244,10 @@ export async function verifyIdToken(
     sub: payload.sub,
     name: claims.name ?? claims.preferred_username ?? null,
     email: claims.email ?? null,
+    // 역할. 포털은 부여 행이 있을 때만 이 클레임을 싣는다 — "안 왔다" 와
+    // "빈 값이 왔다" 를 구분할 수 있어야 해서다. 그래서 타입을 단정하지 않고
+    // 검증된 payload 에서 꺼내 그대로 넘긴다. 판정은 provision.ts 가 한다.
+    role: payload.role,
   };
 }
 
