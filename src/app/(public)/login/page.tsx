@@ -3,6 +3,23 @@ import { redirect } from "next/navigation";
 import { getViewer, safeReturnTo } from "@/lib/auth/guards";
 import { oidcConfigured } from "@/lib/auth/oidc";
 
+/**
+ * 로그인 화면.
+ *
+ * 이 게시판은 아이디도 비밀번호도 받지 않는다. 단추 하나로 포털(dss-auth)에
+ * 넘기고, 포털이 확인해 준 결과만 받는다. 자체 로그인을 만들지 않는 것이 이
+ * 저장소의 전제다.
+ *
+ * ⚠️ 평소에는 이 화면을 거치지 않는다. 세션이 없으면 requireSession 이 곧장
+ * /api/auth/login 으로 보낸다(이유는 guards.ts 에 적어 두었다). 이 화면은
+ * 로그인이 **거절됐을 때**(blocked · unknown_role · not-ready) 이유를 보여주는
+ * 자리로 남는다.
+ *
+ * 🔴 여기서는 자동으로 다시 보내지 않는다. 보내면 거절 → 자동 재시도 → 거절의
+ * 무한 왕복이 되어 사람이 사유를 읽을 틈조차 없어진다. 다시 시도는 사람이
+ * 단추를 눌러야 일어난다 — 거절당한 사람이 유일하게 할 수 있는 일이다.
+ */
+
 const ERROR_MESSAGES: Record<string, string> = {
   // 상세 사유는 서버 로그에만 남긴다. 사용자에게는 보여주지 않는다.
   "1": "로그인하지 못했습니다. 다시 시도해 주세요.",
