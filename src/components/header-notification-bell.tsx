@@ -1,7 +1,11 @@
 import { NotificationBell } from "@dss/ui";
 
-import { dismissNotificationAction } from "@/app/actions/notifications";
+import {
+  dismissAllNotificationsAction,
+  dismissNotificationAction,
+} from "@/app/actions/notifications";
 import { fetchPortalNotifications } from "@/lib/auth/oidc";
+import { visibleNotificationKeys } from "@/lib/notifications/dismiss-keys";
 import { listUnreadNoticeNotifications } from "@/lib/notifications/queries";
 
 /**
@@ -67,6 +71,20 @@ import { listUnreadNoticeNotifications } from "@/lib/notifications/queries";
  *    대신해 줄 수 없는 까닭은 위 「자기 알림은 자기가 붙인다」 그대로다:
  *    포털은 우리 목록을 아예 모른다.
  *
+ * ── 🔴 「보이는 알림 지우기」(onDismissAll)도 **넘긴다** (2026-10-20) ────
+ * 줄이 여럿이면 ✕ 를 여러 번 눌러야 했다. 그 단추는 A/S 에만 있었는데, 이제
+ * @dss/ui 가 **단추도 글자도 개수도** 그린다 — 사이트가 하는 일은 함수를
+ * 넘기는 것뿐이다(그쪽 README 「보이는 알림 지우기」 절).
+ *
+ * 🔴 그 자리는 `() => void` 로 **인자를 안 받는데** 지울 열쇠 목록을 아는 것은
+ *    이쪽이다. 그래서 **값을 미리 묶어** 넘긴다(`…bind(null, 열쇠들)`). 묶은
+ *    것도 여전히 서버 액션이라 경계를 건넌다 — 평범한 화살표 함수는 못 건넌다
+ *    (이 조각에 "use client" 가 없는 것이 그 짝이다).
+ *
+ * 🔴 묶는 열쇠는 **합쳐진 뒤의 목록 전부**다(우리 줄 + 포털 줄). 우리 줄을
+ *    빼면 「전부 지우기를 눌렀는데 게시판 알림만 남는다」가 된다 — 위 ①② 가
+ *    이미 우리 줄도 포털에 지우고 거기서 돌려받아 거른다.
+ *
  * 두 물음은 **나란히** 나간다 — 우리 DB 가 포털을 기다릴 이유가 없다.
  * ============================================================================
  */
@@ -117,6 +135,20 @@ export async function HeaderNotificationBell({
   //    두 겹 중 바깥 한 겹이 이 자리로 내려온다.
   if (items.length === 0) return null;
 
+  // ── 🔴 일괄 지우기에 넘길 열쇠 — **지금 그리는 줄 전부** ────────────────
+  // 🔴 `items` 는 **합쳐진 뒤**의 목록이다(우리 줄 + 포털 줄). 여기서 우리
+  //    줄을 빼면 단추가 게시판 알림은 안 지운다(위 머리말).
+  //
+  // 🔴 `visibleNotificationKeys` 가 **그릴 수 없는 주소의 줄을 뺀다.** 종도
+  //    그 줄을 안 그리고 단추에 적는 수도 그렇게 남은 줄 수라, 여기서 빼지
+  //    않으면 「3건」을 눌렀는데 4건이 지워진다(그 함수 주석).
+  // 🔴 묶는 일은 **그릴 때마다** 한다 — 이 조각이 그려지는 순간의 목록이
+  //    곧 사람이 보는 목록이다.
+  const dismissAll = dismissAllNotificationsAction.bind(
+    null,
+    visibleNotificationKeys(items),
+  );
+
   return (
     <NotificationBell
       items={items}
@@ -138,6 +170,10 @@ export async function HeaderNotificationBell({
       //    은 서버에 남는다 — 이 조각에 "use client" 가 없는 것이 그 판단의
       //    짝이다.
       onDismiss={dismissNotificationAction}
+      // 🔴 넘겼을 때만 「보이는 알림 지우기 n건」 단추가 선다(@dss/ui).
+      //    적히는 `n` 은 묶음이 세는 **지금 그리는 줄 수**라, 묶어 넘긴 열쇠
+      //    수와 같아야 한다 — 위에서 같은 함수로 걸러 맞춰 두었다.
+      onDismissAll={dismissAll}
       // 🔴 `canDismiss` 는 넘기지 않는다 = **모든 줄에 ✕ 가 선다.** 가려야
       //    하는 것은 「처리해야 사라지는 제 할 일」인데 이 게시판의 알림은
       //    「아직 안 읽은 글」이라 그런 줄이 없고, 남의 시스템 줄도 어느
