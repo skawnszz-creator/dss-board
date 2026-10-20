@@ -1,5 +1,6 @@
 import { NotificationBell } from "@dss/ui";
 
+import { dismissNotificationAction } from "@/app/actions/notifications";
 import { fetchPortalNotifications } from "@/lib/auth/oidc";
 import { listUnreadNoticeNotifications } from "@/lib/notifications/queries";
 
@@ -51,6 +52,21 @@ import { listUnreadNoticeNotifications } from "@/lib/notifications/queries";
  * 종이 아예 그려지지 않는다 — 어느 경우에도 화면은 뜬다. 그래서 이 자리에
  * error boundary 가 필요 없다.
  *
+ * ── 🔴 지우기(✕)는 **두 걸음**이다 ──────────────────────────────────────
+ * 「확인했다」는 그 알림을 만든 시스템에만 적을 수 있지만, 「그만 보겠다」는
+ * **포털**에 적힌다(2026-10-19). 그래서 남의 시스템 줄이어도 여기서 지울 수
+ * 있고, 한 번 지우면 사내 시스템 **전부의 종**에서 사라진다. 적는 자리는 서버
+ * 액션이다(app/actions/notifications.ts) — 그것 하나만으로는 **이 게시판에서만
+ * 안 지워진다.** 제 알림이 있는 사이트는 한 걸음이 더 있다:
+ *
+ *   ① 적기   ✕ → 서버 액션 → 포털
+ *   ② 거르기 포털이 돌려준 `dismissed` 로 **우리 줄을** 뺀다 (아래)
+ *
+ * 🔴 ② 가 없으면 「게시판에서 지웠는데 게시판 종에만 그대로 뜬다」가 된다 —
+ *    다른 시스템에서는 사라지는데 여기서만 남아 제일 헷갈린다. 포털이 ② 를
+ *    대신해 줄 수 없는 까닭은 위 「자기 알림은 자기가 붙인다」 그대로다:
+ *    포털은 우리 목록을 아예 모른다.
+ *
  * 두 물음은 **나란히** 나간다 — 우리 DB 가 포털을 기다릴 이유가 없다.
  * ============================================================================
  */
@@ -68,7 +84,31 @@ export async function HeaderNotificationBell({
     fetchPortalNotifications(subject),
   ]);
 
-  const items = [...mine.items, ...others.items];
+  // ── 🔴 지운 줄 거르기 — **우리 줄만** ──────────────────────────────────
+  // 포털은 **남의 시스템 줄을 이미 걸러서** 보낸다(items 에서 빠져 있고 count
+  // 도 그만큼 줄어 있다). 그래서 `others` 에는 손대지 않는다 — 여기서 또
+  // 거르면 포털이 센 값과 어긋난다.
+  //
+  // 🔵 `dismissed` 에는 **이 게시판 몫의 열쇠만** 온다(포털이 그렇게 보낸다 —
+  //    auth/oidc.ts 의 칸 주석). 그래서 접두사로 다시 고를 필요가 없고,
+  //    `mine.items[].key` 와 **같은 모양**이라 그대로 맞춰 보면 된다
+  //    (notifications/bell-items.ts 가 `{sourceId}:{id}` 로 만든다 — 포털에
+  //    적히는 열쇠가 바로 그 값이다).
+  const dismissed = new Set(others.dismissed);
+  const myItems =
+    dismissed.size === 0
+      ? mine.items
+      : mine.items.filter((row) => !dismissed.has(row.key));
+
+  const items = [...myItems, ...others.items];
+
+  // 🔴 **개수도 함께 줄인다.** 줄은 빠졌는데 배지 숫자가 그대로면 「눌러도 안
+  //    없어지는 숫자」가 된다. 빼는 값은 **우리 줄에서 빠진 수**뿐이다.
+  //
+  // 🔴 0 아래로 내려가지 않게 한다. `mine.count` 는 200줄 상한에 걸리기 **전**의
+  //    전체 수라(notifications/queries.ts) 언제나 빠진 수보다 크지만, 그 둘이
+  //    서로 다른 왕복에서 온 값이라는 사실에 기대지 않는다.
+  const myCount = Math.max(0, mine.count - (mine.items.length - myItems.length));
 
   // 🔴 **알림이 0건이면 머리말이 예전과 글자 하나 다르지 않아야 한다.** 묶음도
   //    빈 목록이면 스스로 아무것도 그리지 않지만(그쪽 시험), 앞 조각이 그
@@ -81,7 +121,9 @@ export async function HeaderNotificationBell({
     <NotificationBell
       items={items}
       // 🔴 두 쪽을 **더한다**(위 머리말). items.length 가 아니다.
-      count={mine.count + others.count}
+      //    우리 쪽만 지운 줄만큼 줄어 있고(myCount), 포털 쪽은 포털이 이미
+      //    줄여서 보낸 값 그대로다.
+      count={myCount + others.count}
       // onAcknowledge 를 넘기지 않는다 — 이 게시판의 알림은 **글을 열면
       // 사라지고**(열람 기록이 곧 확인이다 — notifications/bell-items.ts),
       // 포털에서 온 줄은 그 알림을 만든 시스템에서만 확인을 적을 수 있다.
@@ -90,6 +132,18 @@ export async function HeaderNotificationBell({
       // colorScheme 도 넘기지 않는다. 이 사이트는 globals.css 에서
       // color-scheme: light 로 고정이고, 기본값 "host" 는 조상에 .dark 가
       // 있을 때만 어두워지므로 그대로 두는 것이 옳다(@dss/ui README 4절).
+      //
+      // 🔴 `onDismiss` 를 **넘겼을 때만** 줄마다 ✕ 가 그려진다(@dss/ui).
+      //    넘기는 것은 서버 액션이라 번들에는 이름표만 나가고 `client_secret`
+      //    은 서버에 남는다 — 이 조각에 "use client" 가 없는 것이 그 판단의
+      //    짝이다.
+      onDismiss={dismissNotificationAction}
+      // 🔴 `canDismiss` 는 넘기지 않는다 = **모든 줄에 ✕ 가 선다.** 가려야
+      //    하는 것은 「처리해야 사라지는 제 할 일」인데 이 게시판의 알림은
+      //    「아직 안 읽은 글」이라 그런 줄이 없고, 남의 시스템 줄도 어느
+      //    것이든 「내 종에서 그만 보겠다」가 뜻이 통한다 — A/S 가 종류를
+      //    가리던 규칙도 2026-10-20 에 풀었다(막는 것이 아니라 헷갈리게
+      //    만들고 있었다).
     />
   );
 }
