@@ -117,6 +117,24 @@ function kindDescription(topic: NotificationTopic): string {
 }
 
 /**
+ * 포털 표의 역할 **열 차례**(2026-10-22, 쓰는 분 요구 ⑧ — 관리자를 앞에).
+ *
+ * 🔴 `USER_ROLES`(lib/codes.ts) 를 그대로 쓰지 않는다 — 그 차례는 역할 판정
+ * (`provision.ts`)과 `web_users_role_check` CHECK 제약(db/schema.ts)이 함께
+ * 쓰는 차례다. 거기를 바꾸면 CHECK 제약의 생성 SQL 글자가 바뀌어 스키마를
+ * 건드리게 된다. 그래서 **포털에 낼 때만** 이 차례로 다시 줄 세운다 —
+ * `USER_ROLES` 자체는 손대지 않는다.
+ */
+const SETTINGS_ROLE_ORDER: readonly UserRole[] = ["ADMIN", "MEMBER"];
+
+/** `USER_ROLES` 를 위 표시 차례로 정렬한 사본. 집합은 그대로, 차례만 바뀐다. */
+function sortedUserRolesForSettings(): readonly UserRole[] {
+  return [...USER_ROLES].sort(
+    (a, b) => SETTINGS_ROLE_ORDER.indexOf(a) - SETTINGS_ROLE_ORDER.indexOf(b),
+  );
+}
+
+/**
  * 한 종류의 역할 칸들. 🔴 **종류마다 새로 만든다** — 한 객체를 두 줄이 나눠 쓰면
  * 언젠가 한쪽을 고친 것이 다른 쪽까지 바꾼다(지금은 JSON 으로 나가 티가 안 난다).
  */
@@ -142,7 +160,7 @@ function roleCells(): Record<string, PortalSettingsRoleCell> {
  * 뜨는데 설정 표에는 없는 종류(그 반대도)가 생길 자리가 없다.
  */
 export function boardNotificationSettings(): PortalNotificationSettings {
-  const roles: PortalSettingsRole[] = USER_ROLES.map((code) => ({
+  const roles: PortalSettingsRole[] = sortedUserRolesForSettings().map((code) => ({
     code,
     label: ROLE_LABELS[code],
     // 🔴 저장할 표가 없다 — 이 게시판에서는 아무 칸도 바꿀 수 없다(위 머리말).
