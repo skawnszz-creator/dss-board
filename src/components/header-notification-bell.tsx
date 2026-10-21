@@ -1,6 +1,7 @@
 import { NotificationBell } from "@dss/ui";
 
 import {
+  acknowledgeNotificationAction,
   dismissAllNotificationsAction,
   dismissNotificationAction,
 } from "@/app/actions/notifications";
@@ -70,6 +71,35 @@ import { listUnreadNoticeNotifications } from "@/lib/notifications/queries";
  *    다른 시스템에서는 사라지는데 여기서만 남아 제일 헷갈린다. 포털이 ② 를
  *    대신해 줄 수 없는 까닭은 위 「자기 알림은 자기가 붙인다」 그대로다:
  *    포털은 우리 목록을 아예 모른다.
+ *
+ * ── 🔴 확인(onAcknowledge)은 **포털 줄에만** 넘긴다 (2026-10-22) ────────
+ * 2026-10-22 까지 여기에는 「넘기지 않는 이유」가 적혀 있었다: 이 게시판의
+ * 알림(필독·공지)은 **글을 열면** 사라지고(열람 기록이 곧 확인이다 —
+ * notifications/bell-items.ts), 포털에서 온 줄은 그 알림을 만든 시스템에서만
+ * 확인을 적을 수 있어 **이 게시판에는 적을 자리가 없다**는 것이었다.
+ *
+ * 🔴 **제 줄에는 그 전제가 여전히 참이다.** 글을 열면 `recordPostView` 가
+ *    열람을 적고(app/actions/posts.ts), 그 경로는 이 종 클릭과 **무관한
+ *    별개 통로**다. 여기서 건드리지 않는다.
+ *
+ * 🔴 **포털 줄에는 적을 자리가 생겼다.** 포털에 확인을 적는 통로가 열렸다
+ *    (dss-auth 의 /api/integration/notification-acknowledgements,
+ *    2026-10-22). 그래서 `onAcknowledge` 를 **넘기되**, 서버 액션
+ *    (`acknowledgeNotificationAction`) 안에서 **제 줄과 포털 줄을 가른다** —
+ *    누른 줄의 `sourceId` 가 이 게시판 자신(`thisServiceId()`)이면 아무 일도
+ *    하지 않고(포털에 보내도 그쪽 목록에는 이 게시판의 글이 없어 조용히
+ *    버려지고, `recordPostView` 경로와 두 벌의 확인 기록만 남는다), 포털에서
+ *    온 줄(sourceId 가 다르다)만 포털에 적는다.
+ *
+ * 🔴 **무엇을 없앨지 이 게시판은 판단하지 않는다**(포털 줄에 한해). 나가는
+ *    것은 열쇠뿐이고, 포털이 제 목록에서 그 줄을 찾아 **내용 지문을 직접
+ *    계산**해 적는다. 종에서 빠지는 것은 (기록이 있고 · 지문이 지금 내용과
+ *    같고 · 분류가 「정보 확인용」) 셋이 다 맞을 때뿐이라, 결재 승인·부품
+ *    요청처럼 **동작이 필요한 줄은 확인을 적어도 남는다.**
+ *
+ * 🔴 ✕(onDismiss)와 **다른 일**이다. ✕ 는 「지금은 그만 보겠다」라
+ *    재로그인하면 돌아오고, 누름은 「해소됐다」라 돌아오지 않는다.
+ *    **두 단추를 한쪽으로 합치지 말 것** — 포털의 표도 통로도 둘이다.
  *
  * ── 🔴 「보이는 알림 지우기」(onDismissAll)도 **넘긴다** (2026-10-20) ────
  * 줄이 여럿이면 ✕ 를 여러 번 눌러야 했다. 그 단추는 A/S 에만 있었는데, 이제
@@ -156,11 +186,10 @@ export async function HeaderNotificationBell({
       //    우리 쪽만 지운 줄만큼 줄어 있고(myCount), 포털 쪽은 포털이 이미
       //    줄여서 보낸 값 그대로다.
       count={myCount + others.count}
-      // onAcknowledge 를 넘기지 않는다 — 이 게시판의 알림은 **글을 열면
-      // 사라지고**(열람 기록이 곧 확인이다 — notifications/bell-items.ts),
-      // 포털에서 온 줄은 그 알림을 만든 시스템에서만 확인을 적을 수 있다.
-      // 그 줄을 누르면 그 시스템의 화면으로 건너간다.
-      //
+      // 🔴 onAcknowledge 를 넘긴다(2026-10-22) — 위 머리말 「확인(onAcknowledge)은
+      // 포털 줄에만 넘긴다」. 제 줄과 포털 줄을 가르는 일은 묶음이 아니라
+      // acknowledgeNotificationAction 안에서 한다(sourceId 로 가른다).
+      onAcknowledge={acknowledgeNotificationAction}
       // colorScheme 도 넘기지 않는다. 이 사이트는 globals.css 에서
       // color-scheme: light 로 고정이고, 기본값 "host" 는 조상에 .dark 가
       // 있을 때만 어두워지므로 그대로 두는 것이 옳다(@dss/ui README 4절).

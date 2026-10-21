@@ -5,7 +5,11 @@ import { revalidatePath } from "next/cache";
 import type { NotificationBellItem } from "@dss/ui";
 
 import { getViewer } from "@/lib/auth/guards";
-import { dismissPortalNotifications } from "@/lib/auth/oidc";
+import {
+  acknowledgePortalNotification,
+  dismissPortalNotifications,
+  thisServiceId,
+} from "@/lib/auth/oidc";
 import { vetDismissKeys } from "@/lib/notifications/dismiss-keys";
 
 /**
@@ -85,6 +89,81 @@ export async function dismissNotificationAction(
   } catch (error) {
     // 🔴 오류의 **종류**만 남긴다 — 열쇠에는 업무 식별자가 들어 있다.
     console.error("[notify] 알림 지움 처리에서 넘어졌습니다:", {
+      name: error instanceof Error ? error.name : "unknown",
+    });
+  }
+}
+
+/**
+ * 머리말의 알림 종에서 **줄을 눌렀을 때** — 「확인했다」를 포털에 적는다.
+ * (2026-10-22)
+ *
+ * 🔵 위 `dismissNotificationAction` 과 **같은 약속 위에 있다.** 서버 액션인
+ *    까닭도, 사람 번호를 제 세션에서 읽는 것도(`getViewer`), 던지지 않는
+ *    것도, 열쇠를 로그에 안 찍는 것도, 되살리는 자리가 사내 구간
+ *    레이아웃인 것도 같다 — 까닭은 거기 적혀 있다. 여기서는 **다른 점
+ *    넷**만 적는다.
+ *
+ * ── 🔴 ① **제 줄과 포털 줄을 가른다** ────────────────────────────────────
+ * 이 종에는 이 게시판 자신의 알림(필독·공지)도 함께 뜬다
+ * (components/header-notification-bell.tsx 가 `[...myItems, ...others.items]`
+ * 로 이어 붙인다). 그 알림은 **글을 열면** `recordPostView` 가 열람을 적어
+ * 사라진다(notifications/bell-items.ts, app/actions/posts.ts) — 종 클릭과
+ * **무관한 별개 통로**다. 그래서 누른 줄의 `sourceId` 가 이 게시판 자신
+ * (`thisServiceId()`)이면 **아무 일도 하지 않는다.** 포털에 보내도 그쪽
+ * 목록에는 이 게시판의 글이 없어 조용히 버려지고(skipped), 그대로 두면
+ * `recordPostView` 경로와 **두 벌의 확인 기록**만 남는다.
+ *
+ * ── 🔴 ② ✕(onDismiss)와 **다른 일**이다 ──────────────────────────────────
+ * ✕ 는 「지금은 그만 보겠다」라 재로그인하면 돌아오고, 누름은 「해소됐다」라
+ * 돌아오지 않는다. 포털의 표도 둘이고 통로도 둘이다. 🔴 **두 단추를 한쪽으로
+ * 합치지 말 것** — 쓰는 분이 「[X] 는 지금대로」라고 못 박았다(2026-10-22).
+ *
+ * ── 🔴 ③ 무엇을 없앨지 이 게시판은 판단하지 않는다(포털 줄에 한해) ──────
+ * 보내는 것은 열쇠뿐이다. 「그때 본 내용과 같은가(지문)」도, 「동작이
+ * 필요한 알림인가」도 포털이 제 목록을 보고 정한다. 결재 승인·부품 요청처럼
+ * 동작이 필요한 줄은 확인을 적어도 종에 남는다. 그래서 이 함수에는 알림
+ * 종류를 가리는 갈래가 한 줄도 없다 — 있으면 포털과 서로 다른 규칙을 들게
+ * 된다.
+ *
+ * ── 🔴 ④ 이 함수는 **화면이 넘어가는 한가운데서** 불린다 ─────────────────
+ * 줄을 누르면 평범한 <a href> 가 그 시스템의 화면으로 건너간다. 확인을 적는
+ * 일은 그 옆에서 따로 일어나므로, 여기서 느려지거나 실패해도 **이동을 막으면
+ * 안 된다.** @dss/ui 가 이 함수를 try 로 감싸 던져도 밖으로 내보내지 않고
+ * (BellBehavior.tsx 의 notifyAcknowledged), 여기서도 제 손으로 한 번 더
+ * 삼킨다 — 그 성질에 기대지 않는다.
+ *
+ * 🔵 되살리기는 ✕ 한 줄짜리와 같은 셈이다(적혔을 때만). 누른 줄의 주소가
+ *    이 게시판 것이면 어차피 화면이 통째로 다시 뜨지만, 새 탭으로 열었거나
+ *    이동이 막힌 경우에는 이 한 줄이 있어야 종이 맞는다.
+ */
+export async function acknowledgeNotificationAction(
+  item: NotificationBellItem,
+): Promise<void> {
+  try {
+    // 🔴 제 줄이면 아무 일도 하지 않는다 — 위 머리말 ①. 세션을 읽기 전에
+    //    가른다: 포털에 안 보낼 일이라면 사람이 누구인지도 물을 까닭이 없다.
+    if (item?.sourceId === thisServiceId()) return;
+
+    const viewer = await getViewer();
+    if (!viewer) return;
+
+    const key = typeof item?.key === "string" ? item.key : "";
+    if (key === "") return;
+
+    const recorded = await acknowledgePortalNotification(
+      viewer.user.authSub,
+      key,
+    );
+
+    // 🔴 적히지 않았으면 다시 그리지 않는다 — 목록이 똑같을 것이므로 하는
+    //    일이라고는 사이트 전체의 캐시를 버리는 것뿐이다(✕ 와 같은 셈).
+    if (!recorded) return;
+
+    revalidatePath("/", "layout");
+  } catch (error) {
+    // 🔴 오류의 **종류**만 남긴다 — 열쇠에는 업무 식별자가 들어 있다.
+    console.error("[notify] 알림 확인 처리에서 넘어졌습니다:", {
       name: error instanceof Error ? error.name : "unknown",
     });
   }
