@@ -42,7 +42,26 @@ export default async function InternalLayout({
   const currentServiceId = services.length > 0 ? thisServiceId() : null;
 
   return (
-    <>
+    /*
+      ── 🔴 이 <div> 가 **머리말 고정의 버팀대**다 (2026-10-22) ─────────────
+      조각(fragment)이던 자리다. 아무 클래스도 없어 그리는 모습은 한 픽셀도
+      달라지지 않지만, **지우면 `sticky top-0` 이 한 화면 높이까지만 듣는다.**
+
+      까닭: 고정된 요소는 제 **담는 상자**(가장 가까운 블록 조상의 내용 상자)
+      밖으로는 밀려나지 못한다. 이것이 없으면 머리말을 담는 상자가 <body> 인데,
+      globals.css 가 `html, body { height: 100% }` 로 **body 를 화면 한 장
+      높이에 묶어 두었다**(내용이 길면 넘쳐 흐를 뿐 상자는 안 자란다). 그래서
+      글 목록이나 긴 글처럼 한 화면을 넘기는 쪽에서 조금 내리면 머리말이
+      **따라오다 말고 위로 사라진다.**
+      이 <div> 는 높이가 auto 라 내용만큼 자란다 — 그 안에 든 머리말은 문서
+      끝까지 위에 남는다.
+
+      🔵 globals.css 쪽을 고쳐도 되지만 그쪽이 훨씬 위험하다: body 의 높이가
+      정해진 값이 아니게 되면 로그인 화면의 `min-h-full`((public)/login/page.tsx)
+      이 0 으로 풀려 가운데 정렬이 깨진다. 여기 상자 하나를 두는 쪽이 사내
+      구간 밖으로 번지지 않는다.
+    */
+    <div>
       <SiteHeader
         viewer={viewer}
         // 포털(dss-auth)로 돌아가는 칸의 주소. 🔴 위 services 와 **엮지
@@ -74,9 +93,15 @@ export default async function InternalLayout({
               그린다(site-header.tsx — 감싸면 메뉴가 없을 때 빈 칸이 남는다).
               그래서 이 <nav> 가 곧 그 줄의 항목이고, 폭을 정하는 클래스가
               여기 붙어야 듣는다. `shrink-0` 은 단추가 제 내용 폭을 지키게
-              하고(단추는 white-space: nowrap 이라 눌리면 밖으로 삐져나온다),
-              `mr-auto` 는 justify-between 인 그 줄에서 단추가 한가운데로
-              밀려나지 않게 제목 옆에 붙들어 둔다.
+              한다(단추는 white-space: nowrap 이라 눌리면 밖으로 삐져나온다).
+
+              🔵 2026-10-22 에 `mr-auto` 가 빠졌다. 그 전에는 제목·메뉴바·오른쪽
+              묶음이 `justify-between` 한 줄의 항목 셋이라, 그것이 없으면 단추가
+              한가운데로 밀려났다. 지금은 머리말이 **제목과 메뉴바를 왼쪽 묶음
+              하나로 싸서**(☰ 가 맨 앞에 끼면서 그렇게 됐다) 바깥 줄의 항목이
+              둘뿐이고, 그 묶음 안에서는 밀어낼 남는 자리가 아예 없다 — 그래서
+              `mr-auto` 는 아무 일도 하지 않는 글자가 되었다. 넓은 화면의 모습은
+              전과 똑같다.
 
               🔴 colorScheme 은 넘기지 않는다. 이 사이트는 globals.css 에서
               color-scheme: light 로 고정이고, 기본값 "host" 는 조상에 .dark 가
@@ -86,7 +111,7 @@ export default async function InternalLayout({
               services={services}
               currentServiceId={currentServiceId}
               variant="inline"
-              className="shrink-0 mr-auto"
+              className="shrink-0"
             />
           )
         }
@@ -136,6 +161,6 @@ export default async function InternalLayout({
         }
       />
       <main className="mx-auto max-w-[1100px] px-4 py-6">{children}</main>
-    </>
+    </div>
   );
 }
